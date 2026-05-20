@@ -124,22 +124,28 @@ body {
 
 .inventory-grid {
     grid-template-columns: repeat(auto-fill, minmax(var(--slot-size), 1fr)) !important;
-    gap: 10px !important;
+    gap: 12px !important;
+    padding: 12px !important;
 }
 
 .item-slot {
-    min-height: 146px !important;
-    padding: 7px !important;
+    min-height: 138px !important;
+    padding: 0 !important;
+    aspect-ratio: 0.88 !important;
 }
 
 .item-image {
     height: auto !important;
-    flex: 1 1 auto !important;
-    padding: 4px !important;
+    flex: 1 1 0 !important;
+    min-height: 0 !important;
+    padding: 5px !important;
 }
 
 .item-info {
-    padding-top: 6px !important;
+    flex: 0 0 auto !important;
+    min-height: 42px !important;
+    padding: 5px 4px !important;
+    gap: 3px !important;
 }
 
 .item-category {
@@ -216,20 +222,26 @@ body {
     }
 
     .inventory-grid {
-        gap: 7px !important;
+        gap: 9px !important;
+        padding: 9px !important;
     }
 
     .item-slot {
-        min-height: 112px !important;
-        padding: 3px !important;
+        min-height: 116px !important;
+        padding: 0 !important;
+        aspect-ratio: 0.88 !important;
     }
 
     .item-image {
-        padding: 2px !important;
+        flex: 1 1 0 !important;
+        min-height: 0 !important;
+        padding: 3px !important;
     }
 
     .item-info {
-        min-height: 34px !important;
+        flex: 0 0 auto !important;
+        min-height: 38px !important;
         padding: 3px !important;
+        gap: 2px !important;
     }
 }

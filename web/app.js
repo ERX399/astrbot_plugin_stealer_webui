@@ -936,13 +936,31 @@ createApp({
         const formatOriginTarget = (target) => {
             const raw = String(target || '').trim();
             if (!raw) return '未记录';
-            if (raw.startsWith('group:')) return '群 ' + raw.slice(6);
-            if (raw.startsWith('user:')) return '用户 ' + raw.slice(5);
+
+            const knownPrefixes = {
+                group: '群聊',
+                user: '用户',
+                chat: '会话',
+                channel: '频道',
+                telegram: 'Telegram',
+                tg: 'Telegram',
+                qq: 'QQ',
+            };
+
+            const idx = raw.indexOf(':');
+            if (idx > 0) {
+                const prefix = raw.slice(0, idx).toLowerCase();
+                const value = raw.slice(idx + 1);
+                if (knownPrefixes[prefix]) {
+                    return value ? `${knownPrefixes[prefix]} ${value}` : knownPrefixes[prefix];
+                }
+            }
+
             return raw;
         };
 
         const getScopeLabel = (scopeMode) => (
-            String(scopeMode || 'public').toLowerCase() === 'local' ? '本群限定' : '公共'
+            String(scopeMode || 'public').toLowerCase() === 'local' ? '当前会话限定' : '公共'
         );
 
         const emotionsOpen = ref(false);

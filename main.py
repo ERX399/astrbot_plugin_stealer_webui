@@ -7,20 +7,13 @@ import os
 import shutil
 import signal
 import sqlite3
-import sys
 import threading
 import time
-import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
-try:
-    from aiohttp import web
-except ImportError:
-    print("错误：请先安装 aiohttp")
-    print(" pip install aiohttp")
-    sys.exit(1)
+from aiohttp import web
 
 from astrbot.api import logger
 from astrbot.api.star import Context, Star, register
@@ -295,9 +288,215 @@ class StealerDataStore:
         self.save_index_json(index); return updated, skipped
 
 
+class OriginalStealerBridge:
+    """最小桥接原版 astrbot_plugin_stealer 实例，补丁层写操作统一走这里。"""
+
+    def __init__(self, plugin: Any):
+        self.plugin = plugin
+
+    async def load_index(self) -> dict[str, Any]:
+        if hasattr(self.plugin, "_load_index"):
+            return await self.plugin._load_index()
+        db = getattr(self.plugin, "db_service", None)
+        if db and hasattr(db, "get_index_cache_readonly"):
+            return db.get_index_cache_readonly() or {}
+        cache = getattr(self.plugin, "cache_service", None)
+        if cache and hasattr(cache, "get_index_cache_readonly"):
+            return cache.get_index_cache_readonly() or {}
+        return {}
+
+    async def save_index(self, index: dict[str, Any]) -> None:
+        if hasattr(self.plugin, "_save_index"):
+            await self.plugin._save_index(index)
+            return
+        db = getattr(self.plugin, "db_service", None)
+        if db and hasattr(db, "sync_index"):
+            await db.sync_index(index)
+        cache = getattr(self.plugin, "cache_service", None)
+        if cache and hasattr(cache, "set_cache"):
+            await cache.set_cache("index_cache", index, persist=False)
+
+    def category_info(self) -> list[dict[str, str]]:
+        cfg = getattr(self.plugin, "plugin_config", None)
+        if cfg and hasattr(cfg, "get_category_info"):
+            return cfg.get_category_info()
+        return [{"key": str(c), "name": str(c), "desc": ""} for c in getattr(self.plugin, "categories", []) or []]
+
+    def category_keys(self) -> list[str]:
+        cfg = getattr(self.plugin, "plugin_config", None)
+        if cfg and hasattr(cfg, "categories"):
+            return [str(c) for c in (cfg.categories or [])]
+        return [str(c) for c in getattr(self.plugin, "categories", []) or []]
+
+    def _build_image_item(self, path: str, meta: dict[str, Any]) -> dict[str, Any]:
+        p = Path(path)
+        return {
+            "hash": str(meta.get("hash") or p.stem),
+            "category": str(meta.get("category") or p.parent.name or "unknown"),
+            "tags": _split_csv(meta.get("tags", [])),
+            "desc": str(meta.get("desc") or ""),
+            "scenes": _split_csv(meta.get("scenes", meta.get("scene", []))),
+            "scope_mode": _norm_scope(meta.get("scope_mode")),
+            "origin_target": str(meta.get("origin_target") or ""),
+            "created_at": int(meta.get("created_at") or (p.stat().st_mtime if p.exists() else 0)),
+        }
+
+    async def list_images(self, page:int, size:int, category:str|None, q:str, sort:str) -> dict:
+        index = await self.load_index()
+        images = []
+        counts: dict[str, int] = {}
+        q = (q or "").lower()
+        for p, m in index.items():
+            if not isinstance(m, dict) or not Path(p).exists():
+                continue
+            item = self._build_image_item(str(p), m)
+            cat = item["category"]
+            counts[cat] = counts.get(cat, 0) + 1
+            if category and cat != category:
+                continue
+            haystack = " ".join([item["desc"], *map(str, item["tags"]), *map(str, item["scenes"])]).lower()
+            if q and q not in haystack:
+                continue
+            images.append(item)
+        images.sort(key=lambda x:(x.get("created_at",0),x.get("hash","")), reverse=(sort!="oldest"))
+        total=len(images); start=(max(1,page)-1)*size
+        cat_info={c["key"]:c for c in self.category_info()}
+        cats=[{"key":k,"name":cat_info.get(k,{}).get("name",k),"count":v} for k,v in counts.items()]
+        cats.sort(key=lambda x:x["count"], reverse=True)
+        return {"success":True,"total":total,"page":page,"size":size,"images":images[start:start+size],"categories":cats}
+
+    async def find_by_hash(self, h:str):
+        for p,m in (await self.load_index()).items():
+            if isinstance(m, dict) and str(m.get("hash") or Path(p).stem)==h:
+                return p,m
+        return None,None
+
+    async def stats(self) -> dict:
+        idx = await self.load_index()
+        today=datetime.now().replace(hour=0,minute=0,second=0,microsecond=0).timestamp()
+        return {"success":True,"stats":{"total":len(idx),"categories":len(self.category_keys()),"today":sum(1 for m in idx.values() if isinstance(m, dict) and int(m.get("created_at",0) or 0)>=today)}}
+
+    async def categories(self) -> dict:
+        cats={k:0 for k in self.category_keys()}
+        for m in (await self.load_index()).values():
+            if isinstance(m, dict):
+                cat=str(m.get("category","unknown"))
+                cats[cat]=cats.get(cat,0)+1
+        return {"success":True,"categories":cats}
+
+    async def update_image(self, img_hash: str, data: dict) -> tuple[bool, str]:
+        index = dict(await self.load_index())
+        target = None
+        meta = None
+        for p, m in index.items():
+            if isinstance(m, dict) and str(m.get("hash") or Path(p).stem) == img_hash:
+                target, meta = p, m
+                break
+        if not target or not meta:
+            return False, "Image not found"
+
+        if "tags" in data:
+            meta["tags"] = _split_csv(data.get("tags"))
+        if "desc" in data:
+            meta["desc"] = str(data.get("desc") or "")
+        if "scenes" in data or "scene" in data:
+            meta["scenes"] = _split_csv(data.get("scenes", data.get("scene")))
+        if "scope_mode" in data:
+            scope = _norm_scope(data.get("scope_mode"))
+            if scope == "local" and not str(meta.get("origin_target") or "").strip():
+                return False, "Origin target missing"
+            meta["scope_mode"] = scope
+
+        new_cat = str(data.get("category") or meta.get("category") or "unknown")
+        if new_cat != str(meta.get("category")):
+            old = Path(target)
+            if not old.exists():
+                return False, "Source file not found"
+            cfg = getattr(self.plugin, "plugin_config", None)
+            dst_dir = cfg.ensure_category_dir(new_cat) if cfg and hasattr(cfg, "ensure_category_dir") else old.parent.parent / new_cat
+            dst_dir.mkdir(parents=True, exist_ok=True)
+            new = dst_dir / old.name
+            await asyncio.to_thread(shutil.move, str(old), str(new))
+            index.pop(target, None)
+            target = str(new)
+            meta["path"] = target
+            meta["category"] = new_cat
+        index[target] = meta
+        await self.save_index(index)
+        return True, ""
+
+    async def delete_hashes(self, hashes: set[str], blacklist: bool = False) -> int:
+        index = dict(await self.load_index())
+        removed: list[tuple[str, str]] = []
+        for p, m in list(index.items()):
+            h = str(m.get("hash") or Path(p).stem) if isinstance(m, dict) else Path(p).stem
+            if h in hashes:
+                removed.append((p, h))
+                index.pop(p, None)
+        await self.save_index(index)
+        deleted = 0
+        cache = getattr(self.plugin, "cache_service", None)
+        ips = getattr(self.plugin, "image_processor_service", None)
+        for p, h in removed:
+            try:
+                if hasattr(self.plugin, "_safe_remove_file"):
+                    await self.plugin._safe_remove_file(p)
+                else:
+                    await asyncio.to_thread(Path(p).unlink, missing_ok=True)
+                deleted += 1
+            except Exception as e:
+                logger.warning(f"[StealerWebUI] 原版删除调用失败 {p}: {e}")
+            if blacklist and cache and hasattr(cache, "set"):
+                await cache.set("blacklist_cache", h, int(time.time()), persist=True)
+            if ips and hasattr(ips, "invalidate_cache"):
+                ips.invalidate_cache(h)
+        return deleted
+
+    async def move_hashes(self, hashes: set[str], category: str) -> int:
+        index = dict(await self.load_index())
+        cfg = getattr(self.plugin, "plugin_config", None)
+        dst_dir = cfg.ensure_category_dir(category) if cfg and hasattr(cfg, "ensure_category_dir") else None
+        moved = 0
+        for p, m in list(index.items()):
+            if not isinstance(m, dict) or str(m.get("hash") or Path(p).stem) not in hashes:
+                continue
+            old = Path(p)
+            if not old.exists():
+                continue
+            target_dir = dst_dir or old.parent.parent / category
+            target_dir.mkdir(parents=True, exist_ok=True)
+            new = target_dir / old.name
+            await asyncio.to_thread(shutil.move, str(old), str(new))
+            index.pop(p, None)
+            m["path"] = str(new)
+            m["category"] = category
+            index[str(new)] = m
+            moved += 1
+        await self.save_index(index)
+        return moved
+
+    async def update_scope(self, hashes: set[str], scope: str) -> tuple[int, int]:
+        index = dict(await self.load_index())
+        updated = skipped = 0
+        for m in index.values():
+            if not isinstance(m, dict) or str(m.get("hash") or "") not in hashes:
+                continue
+            if scope == "local" and not str(m.get("origin_target") or "").strip():
+                skipped += 1
+                continue
+            m["scope_mode"] = scope
+            updated += 1
+        await self.save_index(index)
+        return updated, skipped
+
+
 class WebUIRunner:
-    def __init__(self, host:str, port:int, password:str, stealer_data_dir:Path, release_occupied_port:bool=True, protect_original_data: bool=True, allow_destructive_operations: bool=False, backup_on_write: bool=True):
-        self.host=host; self.port=port; self.password=password; self.store=StealerDataStore(stealer_data_dir, protect_original_data=protect_original_data, allow_destructive_operations=allow_destructive_operations, backup_on_write=backup_on_write); self.release_occupied_port=release_occupied_port
+    def __init__(self, host:str, port:int, password:str, stealer_data_dir:Path, release_occupied_port:bool=True, protect_original_data: bool=True, allow_destructive_operations: bool=False, backup_on_write: bool=True, source_plugin: Any | None=None):
+        self.host=host; self.port=port; self.password=password; self.source_plugin=source_plugin; self.bridge=OriginalStealerBridge(source_plugin) if source_plugin else None; self.store=StealerDataStore(stealer_data_dir, protect_original_data=protect_original_data, allow_destructive_operations=allow_destructive_operations, backup_on_write=backup_on_write); self.release_occupied_port=release_occupied_port
+        if self.bridge:
+            logger.info("[StealerWebUI] 已连接原版 astrbot_plugin_stealer 实例，写操作将通过原版服务执行")
+        else:
+            logger.warning("[StealerWebUI] 未找到原版 astrbot_plugin_stealer 实例，写操作将被禁用")
         self.loop=None; self.runner=None; self.site=None; self.thread=None; self._started=threading.Event()
 
     def _token(self): return hashlib.sha256(self.password.encode()).hexdigest() if self.password else ""
@@ -331,10 +530,17 @@ class WebUIRunner:
     async def handle_images(self, request):
         if (r:=self._need_auth(request)): return r
         q=request.query
+        if self.bridge:
+            return _json_response(await self.bridge.list_images(int(q.get("page",1)), int(q.get("size",50)), q.get("category") or None, q.get("q",""), q.get("sort","newest")))
         return _json_response(self.store.list_images(int(q.get("page",1)), int(q.get("size",50)), q.get("category") or None, q.get("q",""), q.get("sort","newest")))
+
     async def handle_image_data(self, request):
         if (r:=self._need_auth(request)): return r
-        h=request.query.get("hash",""); p,_=self.store.find_by_hash(h)
+        h=request.query.get("hash","")
+        if self.bridge:
+            p,_=await self.bridge.find_by_hash(h)
+        else:
+            p,_=self.store.find_by_hash(h)
         if not p: return _json_response({"success":False,"error":"图片未找到"})
         path=Path(p); data=base64.b64encode(path.read_bytes()).decode(); return _json_response({"success":True,"hash":h,"url":f"data:{_mime(path)};base64,{data}"})
     async def handle_serve_image(self, request):
@@ -345,59 +551,58 @@ class WebUIRunner:
         return web.FileResponse(p) if p.exists() else _json_response({"success":False,"error":"文件不存在"},404)
     async def handle_stats(self, request):
         if (r:=self._need_auth(request)): return r
+        if self.bridge:
+            return _json_response(await self.bridge.stats())
         idx=self.store.load_index(); today=datetime.now().replace(hour=0,minute=0,second=0,microsecond=0).timestamp(); return _json_response({"success":True,"stats":{"total":len(idx),"categories":len(self.store.get_category_keys()),"today":sum(1 for m in idx.values() if int(m.get("created_at",0) or 0)>=today)}})
     async def handle_categories(self, request):
         if (r:=self._need_auth(request)): return r
         if request.method=="POST":
-            try:
-                data=await request.json(); keys=self.store.save_categories(data.get("categories",[])); return _json_response({"success":True,"categories":keys})
-            except PermissionError as e:
-                return _json_response({"success":False,"error":str(e)}, 403)
+            return self._write_operation_unavailable()
+        if self.bridge:
+            return _json_response(await self.bridge.categories())
         cats={k:0 for k in self.store.get_category_keys()}
         for m in self.store.load_index().values(): cats[str(m.get("category","unknown"))]=cats.get(str(m.get("category","unknown")),0)+1
         return _json_response({"success":True,"categories":cats})
     async def handle_emotions(self, request):
         if (r:=self._need_auth(request)): return r
+        if self.bridge:
+            return _json_response({"success":True,"emotions":self.bridge.category_info()})
         return _json_response({"success":True,"emotions":self.store.get_category_info()})
     async def handle_health(self, request): return _json_response({"success":True,"status":"ok","service":"emoji-manager-webui"})
+    def _write_operation_unavailable(self):
+        return _json_response({"success":False,"error":"未连接到原版 astrbot_plugin_stealer 实例，补丁 WebUI 禁止独立写入数据。"}, 501)
+
     async def handle_update(self, request):
         if (r:=self._need_auth(request)): return r
-        try:
-            data=await request.json(); ok,err=self.store.update_image(str(data.get("hash","")), data); return _json_response({"success":ok,"error":err})
-        except PermissionError as e:
-            return _json_response({"success":False,"error":str(e)}, 403)
+        if not self.bridge: return self._write_operation_unavailable()
+        data=await request.json(); ok,err=await self.bridge.update_image(str(data.get("hash","")), data); return _json_response({"success":ok,"error":err})
+
     async def handle_delete(self, request):
         if (r:=self._need_auth(request)): return r
-        try:
-            data=await request.json(); n=self.store.delete_hashes({str(data.get("hash",""))}); return _json_response({"success":n>0,"count":n,"error":"图片未找到" if n==0 else ""})
-        except PermissionError as e:
-            return _json_response({"success":False,"count":0,"error":str(e)}, 403)
+        if not self.bridge: return self._write_operation_unavailable()
+        data=await request.json(); n=await self.bridge.delete_hashes({str(data.get("hash",""))}, bool(data.get("blacklist", False))); return _json_response({"success":n>0,"count":n,"error":"图片未找到" if n==0 else ""})
+
     async def handle_batch_delete(self, request):
         if (r:=self._need_auth(request)): return r
-        try:
-            data=await request.json(); return _json_response({"success":True,"count":self.store.delete_hashes(set(map(str,data.get("hashes",[]))))})
-        except PermissionError as e:
-            return _json_response({"success":False,"count":0,"error":str(e)}, 403)
+        if not self.bridge: return self._write_operation_unavailable()
+        data=await request.json(); return _json_response({"success":True,"count":await self.bridge.delete_hashes(set(map(str,data.get("hashes",[]))))})
+
     async def handle_batch_move(self, request):
         if (r:=self._need_auth(request)): return r
-        try:
-            data=await request.json(); return _json_response({"success":True,"count":self.store.move_hashes(set(map(str,data.get("hashes",[]))), str(data.get("category","unknown")))})
-        except PermissionError as e:
-            return _json_response({"success":False,"count":0,"error":str(e)}, 403)
+        if not self.bridge: return self._write_operation_unavailable()
+        data=await request.json(); return _json_response({"success":True,"count":await self.bridge.move_hashes(set(map(str,data.get("hashes",[]))), str(data.get("category","unknown")))})
+
     async def handle_batch_scope(self, request):
         if (r:=self._need_auth(request)): return r
-        data=await request.json(); u,s=self.store.update_scope(set(map(str,data.get("hashes",[]))), _norm_scope(data.get("scope_mode"))); return _json_response({"success":True,"count":u,"skipped":s})
+        if not self.bridge: return self._write_operation_unavailable()
+        data=await request.json(); u,s=await self.bridge.update_scope(set(map(str,data.get("hashes",[]))), _norm_scope(data.get("scope_mode"))); return _json_response({"success":True,"count":u,"skipped":s})
     async def handle_upload(self, request): return _json_response({"success":False,"error":"独立补丁暂不支持单图上传，请使用目标插件原生 WebUI 或批量导入待后续适配"})
     async def handle_batch_upload(self, request): return _json_response({"success":False,"error":"独立补丁暂不支持批量上传"})
     async def handle_batch_status(self, request): return _json_response({"success":False,"error":"任务不存在或独立补丁未启用上传"})
     async def handle_analyze(self, request): return _json_response({"success":False,"error":"独立补丁无法调用目标插件 VLM 服务"})
     async def handle_delete_category(self, request):
         if (r:=self._need_auth(request)): return r
-        try:
-            self.store._deny_destructive()
-            data=await request.json(); key=str(data.get("key","")); cats=[c for c in self.store.get_category_info() if c["key"]!=key]; self.store.save_categories(cats); target=self.store._assert_inside_data_dir(self.store.categories_dir/self.store._ensure_safe_filename(key)); shutil.rmtree(target, ignore_errors=True); return _json_response({"success":True,"deleted":key,"categories":[c["key"] for c in cats]})
-        except PermissionError as e:
-            return _json_response({"success":False,"error":str(e)}, 403)
+        return self._write_operation_unavailable()
 
     def _is_addr_in_use(self, e: OSError) -> bool:
         return getattr(e, "errno", None) == 98 or "address already in use" in str(e).lower()
@@ -454,15 +659,69 @@ class WebUIRunner:
 class StealerWebUIStandalonePlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context); self.config=config; self._webui_runner=None; _shutdown_active_webui()
-        data_dir=self._resolve_stealer_data_dir()
+        source_plugin=self._resolve_stealer_plugin(context)
+        data_dir=Path(getattr(source_plugin, "base_dir")) if source_plugin and getattr(source_plugin, "base_dir", None) else self._resolve_stealer_data_dir()
         if not data_dir or not data_dir.exists(): logger.error("[StealerWebUI] 无法找到 Stealer 数据目录，WebUI 未启动"); return
         host=config.get("webui_host","0.0.0.0"); port=int(config.get("webui_port",9191)); password=config.get("webui_password","") or os.environ.get("STEALER_WEBUI_PASSWORD","")
         protect_original_data=bool(config.get("protect_original_data", True))
         allow_destructive_operations=bool(config.get("allow_destructive_operations", False))
         backup_on_write=bool(config.get("backup_on_write", True))
-        self._webui_runner=WebUIRunner(host,port,password,Path(data_dir),bool(config.get("release_occupied_port",True)),protect_original_data=protect_original_data,allow_destructive_operations=allow_destructive_operations,backup_on_write=backup_on_write)
+        self._webui_runner=WebUIRunner(host,port,password,Path(data_dir),bool(config.get("release_occupied_port",True)),protect_original_data=protect_original_data,allow_destructive_operations=allow_destructive_operations,backup_on_write=backup_on_write,source_plugin=source_plugin)
         if self._webui_runner.start_in_thread():
             global _active_webui_server; _active_webui_server=self._webui_runner
+    def _looks_like_stealer_plugin(self, obj: Any) -> bool:
+        if obj is self or obj is None:
+            return False
+        return bool(
+            getattr(obj, "plugin_config", None) is not None
+            and getattr(obj, "cache_service", None) is not None
+            and (hasattr(obj, "_load_index") or hasattr(obj, "db_service"))
+        )
+
+    def _resolve_stealer_plugin(self, context: Context):
+        seen: set[int] = set()
+        found = []
+
+        def walk(obj: Any, depth: int = 0):
+            if obj is None or depth > 4:
+                return
+            oid = id(obj)
+            if oid in seen:
+                return
+            seen.add(oid)
+            if self._looks_like_stealer_plugin(obj):
+                found.append(obj)
+                return
+            if isinstance(obj, dict):
+                for v in obj.values():
+                    walk(v, depth + 1)
+                return
+            if isinstance(obj, (list, tuple, set)):
+                for v in obj:
+                    walk(v, depth + 1)
+                return
+            for name in ("stars", "plugins", "star_map", "plugin_map", "loaded_plugins", "_stars", "_plugins", "_star_map", "_plugin_map", "star_manager", "plugin_manager"):
+                try:
+                    if hasattr(obj, name):
+                        walk(getattr(obj, name), depth + 1)
+                except Exception:
+                    pass
+            try:
+                if hasattr(obj, "__dict__"):
+                    for k, v in vars(obj).items():
+                        if "stealer" in str(k).lower() or k in {"context", "star_manager", "plugin_manager"}:
+                            walk(v, depth + 1)
+            except Exception:
+                pass
+
+        walk(context)
+        if found:
+            obj = found[0]
+            logger.info(f"[StealerWebUI] 找到原版 Stealer 插件实例: {obj.__class__.__module__}.{obj.__class__.__name__}")
+            return obj
+        logger.warning("[StealerWebUI] 未找到原版 astrbot_plugin_stealer 实例，写操作将不可用")
+        return None
+
     def _resolve_stealer_data_dir(self):
         configured=self.config.get("stealer_data_dir","")
         if configured and Path(configured).exists(): return Path(configured)

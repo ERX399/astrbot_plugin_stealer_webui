@@ -514,7 +514,7 @@ h2 {
     padding: 24px;
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(var(--slot-size), 1fr));
-    gap: 16px;
+    gap: 18px;
     overflow-y: auto;
     align-content: start;
 }
@@ -525,13 +525,14 @@ h2 {
     border: 1px solid var(--gold-dark);
     position: relative;
     cursor: pointer;
-    transition: all 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+    transition: all 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    aspect-ratio: 1;
+    aspect-ratio: 0.88;
+    min-height: 0;
     border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.42), 0 0 0 1px rgba(212,180,110,0.06) inset;
 }
 
 .item-slot::before {
@@ -545,8 +546,8 @@ h2 {
 .item-slot:hover {
     border-color: var(--gold-bright);
     background: linear-gradient(135deg, var(--bg-slot-hover) 0%, var(--bg-slot) 100%);
-    transform: translateY(-6px) scale(1.03);
-    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.6), 0 0 20px rgba(212, 180, 110, 0.25), inset 0 0 20px rgba(212, 180, 110, 0.1);
+    transform: translateY(-3px);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.58), 0 0 16px rgba(212, 180, 110, 0.22), inset 0 0 18px rgba(212, 180, 110, 0.08);
     z-index: 2;
 }
 
@@ -584,7 +585,7 @@ h2 {
 
 /* Item Image */
 .item-image {
-    flex: 1 1 auto;
+    flex: 1 1 0;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -612,22 +613,22 @@ h2 {
 
 /* Item Info */
 .item-info {
+    flex: 0 0 auto;
     background: linear-gradient(to top, rgba(0, 0, 0, 0.95) 0%, rgba(0, 0, 0, 0.5) 100%);
     backdrop-filter: blur(4px);
-    padding: 6px;
+    padding: 6px 6px 7px;
     border-top: 1px solid rgba(212, 180, 110, 0.2);
     text-align: center;
-    min-height: 42px;
+    min-height: 46px;
     display: flex;
     flex-direction: column;
     justify-content: center;
-    gap: 6px;
-    transform: translateY(2px);
-    transition: transform 0.3s ease;
+    gap: 4px;
+    transform: none;
+    transition: background 0.3s ease, border-color 0.3s ease;
 }
 
 .item-slot:hover .item-info {
-    transform: translateY(0);
     background: linear-gradient(to top, rgba(0, 0, 0, 0.98) 0%, rgba(0, 0, 0, 0.7) 100%);
     border-top-color: var(--gold-dim);
 }
@@ -655,7 +656,7 @@ h2 {
 .item-meta-row {
     display: flex;
     justify-content: center;
-    margin-top: 6px;
+    margin-top: 0;
 }
 
 .scope-pill {
