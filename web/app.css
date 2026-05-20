@@ -23,9 +23,9 @@
     --shadow-color: rgba(0, 0, 0, 0.7);
     --shadow-light: rgba(212, 180, 110, 0.15);
     
-    /* Larger slot sizes for better image display */
-    --slot-size: 160px;
-    --slot-size-tablet: 140px;
+    /* Responsive slot sizes: larger on desktop, compact on mobile */
+    --slot-size: 200px;
+    --slot-size-tablet: 150px;
     --slot-size-mobile: 110px;
     --slot-size-small: 90px;
 }
@@ -2074,6 +2074,23 @@ select.codex-input {
     .category-item.active:hover {
         background: linear-gradient(to right, rgba(212, 180, 110, 0.15), transparent);
         border-color: var(--gold-primary);
+    }
+}
+
+/* Touch phones may report a wider CSS viewport when browser zoom is changed.
+   Keep the emoji grid close to the original WebUI density: 4 items per row. */
+@media (hover: none) and (pointer: coarse) and (max-width: 900px) {
+    .inventory-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 8px;
+        padding: 12px;
+        justify-content: stretch;
+    }
+
+    .item-slot {
+        width: 100%;
+        height: auto;
+        aspect-ratio: 1;
     }
 }
 
