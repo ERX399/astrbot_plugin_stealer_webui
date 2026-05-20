@@ -2818,3 +2818,79 @@ select.codex-input {
         font-size: 0.85rem;
     }
 }
+
+/* ========== Standalone WebUI detail preview adaptive tuning ==========
+   Keep the original stylesheet as baseline, then fine-tune the independent
+   detail modal: slightly smaller frame, larger image utilization, and
+   better adaptation across desktop/mobile/desktop-site modes. */
+.modal-panel {
+    max-width: min(860px, calc(100vw - 24px));
+}
+
+.item-detail {
+    min-height: clamp(360px, 68vh, 460px);
+}
+
+.item-preview {
+    min-height: clamp(320px, 58vh, 420px);
+    padding: clamp(16px, 3vw, 28px);
+}
+
+.item-preview img {
+    display: block;
+    width: min(100%, 520px);
+    height: min(58vh, 420px);
+    max-width: 100%;
+    max-height: min(58vh, 420px);
+    object-fit: contain;
+}
+
+/* Medium screens: stack detail content earlier and keep preview compact. */
+@media (max-width: 1024px) {
+    .item-detail {
+        min-height: auto;
+    }
+
+    .item-preview {
+        min-height: clamp(280px, 52vh, 360px);
+        padding: clamp(14px, 3vw, 20px);
+    }
+
+    .item-preview img {
+        width: min(100%, 440px);
+        height: min(52vh, 360px);
+        max-height: min(52vh, 360px);
+    }
+}
+
+/* Phones: avoid a huge detail modal while still making the emoji itself larger. */
+@media (max-width: 768px), (max-device-width: 768px) {
+    .modal-panel {
+        max-width: 100%;
+    }
+
+    .item-preview {
+        min-height: clamp(240px, 48vh, 320px);
+        padding: 12px;
+    }
+
+    .item-preview img {
+        width: min(100%, 360px);
+        height: min(48vh, 320px);
+        max-height: min(48vh, 320px);
+    }
+}
+
+/* Very small devices. */
+@media (max-width: 380px) {
+    .item-preview {
+        min-height: clamp(220px, 44vh, 280px);
+        padding: 10px;
+    }
+
+    .item-preview img {
+        width: min(100%, 320px);
+        height: min(44vh, 280px);
+        max-height: min(44vh, 280px);
+    }
+}
