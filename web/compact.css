@@ -155,14 +155,25 @@ body {
 }
 
 .modal-panel {
-    max-width: min(920px, calc(100vw - 28px)) !important;
-    max-height: calc(100vh - 28px) !important;
+    max-width: min(1120px, calc(100vw - 20px)) !important;
+    max-height: calc(100vh - 20px) !important;
+    padding: 10px !important;
+}
+
+.item-stats {
+    width: 260px !important;
+    flex-basis: 260px !important;
     padding: 14px !important;
+}
+
+.item-preview {
+    min-height: 560px !important;
+    padding: 18px !important;
 }
 
 .item-preview img,
 .preview-image img {
-    max-height: 52vh !important;
+    max-height: 76vh !important;
 }
 
 .form-grid,

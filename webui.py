@@ -48,12 +48,10 @@ class StealerWebUIServer:
         return app
 
     async def handle_index(self, request):
-        if not self._is_authenticated(request):
-            raise web.HTTPFound("/login.html")
         return web.FileResponse(Path(__file__).parent / "web" / "index.html")
 
     async def handle_login(self, request):
-        return web.FileResponse(Path(__file__).parent / "web" / "login.html")
+        raise web.HTTPFound("/")
 
     async def handle_api_login(self, request):
         data = await request.json()

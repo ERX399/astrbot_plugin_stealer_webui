@@ -3,7 +3,51 @@ const { createApp, ref, reactive, onMounted } = Vue;
 const PLACEHOLDER = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
 
 const TEMPLATE = /* html */ `
-        <header class="codex-header">
+        <div v-if="needsLogin" class="login-overlay">
+            <div class="login-panel">
+                <div class="login-logo">
+                    <div class="login-logo-icon">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+                        </svg>
+                    </div>
+                    <h1 class="login-title">Stealer WebUI</h1>
+                    <p class="login-subtitle">表情包管理 · 独立版</p>
+                </div>
+
+                <form class="login-form" @submit.prevent="submitLogin">
+                    <div class="login-form-header">
+                        <div class="login-lock-icon">
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                            </svg>
+                        </div>
+                        <p class="login-form-title">请输入访问密码</p>
+                    </div>
+
+                    <div class="login-input-group">
+                        <div class="login-input-wrapper">
+                            <input
+                                v-model="loginPassword"
+                                class="login-input"
+                                type="password"
+                                autocomplete="current-password"
+                                placeholder="Access Token"
+                                :disabled="loginLoading"
+                                autofocus
+                            >
+                        </div>
+                    </div>
+
+                    <button class="login-button" type="submit" :disabled="loginLoading || !loginPassword">
+                        {{ loginLoading ? '验证中...' : '进入面板' }}
+                    </button>
+                    <p v-if="loginError" class="login-error">{{ loginError }}</p>
+                </form>
+            </div>
+        </div>
+
+        <header v-if="!needsLogin" class="codex-header">
             <div class="header-title">
                 <div class="header-icon">
                     <svg style="width:28px;height:28px" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -63,7 +107,7 @@ const TEMPLATE = /* html */ `
             </button>
         </header>
 
-        <div class="main-container">
+        <div v-if="!needsLogin" class="main-container">
             <aside class="sidebar">
                 <div class="sidebar-title">分类</div>
                 <div class="category-list">
@@ -802,6 +846,11 @@ createApp({
         const pageSize = ref(30);
         const total = ref(0);
 
+        const needsLogin = ref(false);
+        const loginPassword = ref('');
+        const loginLoading = ref(false);
+        const loginError = ref('');
+
         const previewOpen = ref(false);
         const previewItem = ref(null);
         const isEditing = ref(false);
@@ -910,7 +959,14 @@ createApp({
             apiGet: async (endpoint, params) => {
                 const qs = params ? '?' + new URLSearchParams(params).toString() : '';
                 const res = await fetch('/api/' + endpoint + qs);
-                return await res.json();
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    const err = new Error(data.error || data.message || '请求失败');
+                    err.status = res.status;
+                    err.data = data;
+                    throw err;
+                }
+                return data;
             },
             apiPost: async (endpoint, payload) => {
                 const res = await fetch('/api/' + endpoint, {
@@ -918,13 +974,27 @@ createApp({
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload || {}),
                 });
-                return await res.json();
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    const err = new Error(data.error || data.message || '请求失败');
+                    err.status = res.status;
+                    err.data = data;
+                    throw err;
+                }
+                return data;
             },
             upload: async (endpoint, file) => {
                 const form = new FormData();
                 form.append('file', file);
                 const res = await fetch('/api/' + endpoint, { method: 'POST', body: form });
-                return await res.json();
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    const err = new Error(data.error || data.message || '请求失败');
+                    err.status = res.status;
+                    err.data = data;
+                    throw err;
+                }
+                return data;
             },
         };
 
@@ -1012,6 +1082,14 @@ createApp({
                     data = await bridge.apiGet(endpoint, Object.keys(params).length ? params : undefined);
                 }
 
+                if (data && (data.error === '未登录' || data.message === '未登录')) {
+                    needsLogin.value = true;
+                    loading.value = false;
+                    const err = new Error('未登录');
+                    err.status = 401;
+                    throw err;
+                }
+
                 return {
                     ok: true,
                     status: 200,
@@ -1019,10 +1097,14 @@ createApp({
                     text: async () => (typeof data === 'string' ? data : JSON.stringify(data)),
                 };
             } catch (e) {
+                if (e && (e.status === 401 || e.message === '未登录')) {
+                    needsLogin.value = true;
+                    loading.value = false;
+                }
                 return {
                     ok: false,
-                    status: 500,
-                    json: async () => { throw e; },
+                    status: e?.status || 500,
+                    json: async () => ({ success: false, error: e.message || '请求失败' }),
                     text: async () => e.message,
                 };
             }
@@ -1090,8 +1172,34 @@ createApp({
 
         const loadAll = async () => {
             await fetchStats();
+            if (needsLogin.value) return;
             await fetchEmotions();
+            if (needsLogin.value) return;
             await fetchImages(1);
+        };
+
+        const submitLogin = async () => {
+            loginError.value = '';
+            loginLoading.value = true;
+            try {
+                const res = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password: loginPassword.value }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok || !data.success) {
+                    loginError.value = data.error || '登录失败';
+                    return;
+                }
+                needsLogin.value = false;
+                loginPassword.value = '';
+                await loadAll();
+            } catch (e) {
+                loginError.value = '网络错误，请稍后重试';
+            } finally {
+                loginLoading.value = false;
+            }
         };
 
         const debouncedSearch = () => {
@@ -1768,6 +1876,12 @@ createApp({
             currentPage,
             pageSize,
             total,
+
+            needsLogin,
+            loginPassword,
+            loginLoading,
+            loginError,
+            submitLogin,
 
             previewOpen,
             previewItem,
