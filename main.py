@@ -321,9 +321,8 @@ class WebUIRunner:
         return None
 
     async def handle_index(self, request):
-        if self.password and not self._auth(request): raise web.HTTPFound("/login.html")
         return web.FileResponse(Path(__file__).parent/"web"/"index.html")
-    async def handle_login(self, request): return web.FileResponse(Path(__file__).parent/"web"/"login.html")
+    async def handle_login(self, request): raise web.HTTPFound("/")
     async def handle_login_api(self, request):
         data=await request.json()
         if data.get("password")==self.password:
