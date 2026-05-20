@@ -261,7 +261,7 @@ const TEMPLATE = /* html */ `
         </div>
 
         <div v-if="previewOpen" class="modal-overlay" @click.self="closePreview">
-            <div class="modal-panel">
+            <div class="modal-panel item-detail-modal">
                 <div class="modal-panel-corner-bl"></div>
                 <div class="modal-panel-corner-br"></div>
 

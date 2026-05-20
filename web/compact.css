@@ -133,7 +133,9 @@ body {
 }
 
 .item-image {
-    height: var(--slot-size) !important;
+    height: auto !important;
+    flex: 1 1 auto !important;
+    padding: 4px !important;
 }
 
 .item-info {
@@ -155,9 +157,13 @@ body {
 }
 
 .modal-panel {
-    max-width: min(1120px, calc(100vw - 20px)) !important;
+    max-width: min(900px, calc(100vw - 20px)) !important;
     max-height: calc(100vh - 20px) !important;
     padding: 10px !important;
+}
+
+.item-detail-modal {
+    max-width: min(1080px, calc(100vw - 20px)) !important;
 }
 
 .item-stats {
@@ -215,6 +221,15 @@ body {
 
     .item-slot {
         min-height: 112px !important;
-        padding: 5px !important;
+        padding: 3px !important;
+    }
+
+    .item-image {
+        padding: 2px !important;
+    }
+
+    .item-info {
+        min-height: 34px !important;
+        padding: 3px !important;
     }
 }

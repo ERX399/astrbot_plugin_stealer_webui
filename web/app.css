@@ -584,11 +584,11 @@ h2 {
 
 /* Item Image */
 .item-image {
-    flex: 1;
+    flex: 1 1 auto;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 12px;
+    padding: 6px;
     overflow: hidden;
     min-height: 0;
 }
@@ -614,10 +614,10 @@ h2 {
 .item-info {
     background: linear-gradient(to top, rgba(0, 0, 0, 0.95) 0%, rgba(0, 0, 0, 0.5) 100%);
     backdrop-filter: blur(4px);
-    padding: 10px;
+    padding: 6px;
     border-top: 1px solid rgba(212, 180, 110, 0.2);
     text-align: center;
-    min-height: 52px;
+    min-height: 42px;
     display: flex;
     flex-direction: column;
     justify-content: center;
@@ -829,9 +829,10 @@ h2 {
 .modal-panel {
     background: linear-gradient(145deg, rgba(20, 28, 41, 0.95), rgba(10, 15, 24, 0.98));
     border: 1px solid var(--gold-primary);
-    max-width: min(1120px, calc(100vw - 32px));
-    width: 100%;
-    max-height: 94vh;
+    max-width: min(900px, calc(100vw - 32px));
+    width: fit-content;
+    min-width: min(360px, calc(100vw - 32px));
+    max-height: 90vh;
     display: flex;
     flex-direction: column;
     position: relative;
@@ -932,6 +933,12 @@ h2 {
     display: flex;
 }
 
+.item-detail-modal {
+    width: auto;
+    max-width: min(1080px, calc(100vw - 32px));
+    max-height: min(92vh, 820px);
+}
+
 /* Item Detail */
 .item-detail {
     display: flex;
@@ -940,14 +947,14 @@ h2 {
 }
 
 .item-preview {
-    flex: 1 1 auto;
+    flex: 1 1 clamp(360px, 58vw, 760px);
     background: linear-gradient(135deg, #0a0f16 0%, #000 100%);
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 24px;
+    padding: clamp(12px, 2vw, 24px);
     position: relative;
-    min-height: 560px;
+    min-height: clamp(360px, 68vh, 620px);
 }
 
 .item-preview img {
