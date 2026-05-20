@@ -1893,31 +1893,52 @@ select.codex-input {
     
     .sidebar {
         width: 100%;
+        flex: 0 0 auto;
         flex-direction: column;
-        overflow-x: visible;
-        overflow-y: visible;
+        overflow: hidden;
         padding: 12px;
-        max-height: none;
+        max-height: clamp(180px, 32vh, 280px);
         gap: 8px;
     }
     
     .sidebar-title {
-        display: none;
+        display: flex;
+        flex: 0 0 auto;
+        margin-bottom: 2px;
+        padding-bottom: 8px;
     }
     
     .category-list {
-        flex-direction: row;
-        flex-wrap: wrap;
-        gap: 8px;
+        flex-direction: column;
+        flex-wrap: nowrap;
+        gap: 6px;
         width: 100%;
         min-width: 0;
+        min-height: 0;
+        max-height: clamp(128px, 24vh, 220px);
+        overflow-x: hidden;
+        overflow-y: auto;
+        padding-right: 4px;
     }
     
     .category-item {
-        flex: 0 1 auto;
-        min-width: max-content;
+        flex: 0 0 auto;
+        width: 100%;
+        min-width: 0;
         max-width: 100%;
         white-space: nowrap;
+    }
+
+    .category-name {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .category-count {
+        flex: 0 0 auto;
+        margin-left: 8px;
     }
 
     .category-item,
