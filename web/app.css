@@ -497,15 +497,15 @@ h2 {
     padding-left: 0;
 }
 
-/* Standalone WebUI sort selector */
 .toolbar-sort-select {
-    width: 96px;
-    min-width: 96px;
-    height: 38px;
-    padding: 8px 32px 8px 12px;
-    font-size: 0.8rem;
-    line-height: 1.2;
-    flex-shrink: 0;
+    width: 120px;
+}
+
+@media (max-width: 768px) {
+    .toolbar-sort-select {
+        width: auto;
+        min-width: 0;
+    }
 }
 
 /* ========== Inventory Grid ========== */
@@ -594,6 +594,9 @@ h2 {
 }
 
 .item-image img {
+    display: block;
+    width: auto;
+    height: auto;
     max-width: 100%;
     max-height: 100%;
     object-fit: contain;
@@ -948,6 +951,9 @@ h2 {
 }
 
 .item-preview img {
+    display: block;
+    width: min(100%, 480px);
+    height: min(70vh, 480px);
     max-width: 100%;
     max-height: 480px;
     object-fit: contain;
@@ -1708,6 +1714,56 @@ select.codex-input {
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
 }
 
+.upload-preview-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.upload-preview-info {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-align: left;
+}
+
+.upload-preview-name {
+    margin: 0 0 6px 0;
+    color: var(--gold-primary);
+    font-family: 'Cinzel', serif;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.upload-preview-size {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
+.modal-footer-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 24px;
+    padding-top: 20px;
+    border-top: 1px solid var(--gold-dark);
+}
+
+@media (max-width: 768px) {
+    .upload-preview-row {
+        flex-direction: column;
+        gap: 12px;
+    }
+    .upload-preview-info {
+        text-align: center;
+    }
+    .modal-footer-actions {
+        margin-top: 16px;
+        padding-top: 12px;
+    }
+}
+
 /* ========== Batch Bar ========== */
 .batch-bar {
     position: fixed;
@@ -1895,15 +1951,7 @@ select.codex-input {
     .toolbar-actions {
         justify-content: center;
     }
-
-    .toolbar-sort-select {
-        width: 88px;
-        min-width: 88px;
-        height: 36px;
-        padding: 7px 28px 7px 10px;
-        font-size: 0.75rem;
-    }
-
+    
     .inventory-grid {
         grid-template-columns: repeat(auto-fill, minmax(var(--slot-size-mobile), 1fr));
         gap: 8px;
@@ -2019,6 +2067,29 @@ select.codex-input {
     .category-item.active:hover {
         background: linear-gradient(to right, rgba(212, 180, 110, 0.15), transparent);
         border-color: var(--gold-primary);
+    }
+}
+
+/* Mobile grid normalization.
+   Some mobile browsers report a much wider CSS viewport in desktop-site/zoom modes,
+   which makes auto-fill place 6+ emojis per row. Keep the original WebUI density:
+   4 items per row on phones and portrait mobile desktop-preview pages. */
+@media (max-width: 768px), (max-device-width: 768px), (orientation: portrait) and (max-width: 1600px) {
+    .inventory-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 6px;
+        padding: 8px;
+        justify-content: stretch;
+    }
+
+    .item-slot {
+        width: 100%;
+        height: auto;
+        aspect-ratio: 1;
+    }
+
+    .item-image {
+        padding: 8px;
     }
 }
 
@@ -2569,22 +2640,181 @@ select.codex-input {
     color: #6a4c00;
 }
 
-/* Standalone WebUI mobile density fix.
-   Based on the original WebUI CSS, only normalize phone/portrait desktop-preview grids
-   to keep emoji thumbnails close to the original 4-per-row density. */
-@media (max-width: 768px), (max-device-width: 768px), (orientation: portrait) and (max-width: 1600px) {
-    .inventory-grid {
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 8px;
-        padding: 12px;
+/* ── Toast Notification ─────────────────────────────────── */
+.toast-notification {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10000;
+    background: var(--bg-panel);
+    border: 1px solid var(--gold-primary);
+    color: var(--text-main);
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-family: 'Cinzel', serif;
+    font-size: 0.9rem;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+    cursor: pointer;
+    animation: toast-in 0.3s ease-out;
+}
+@keyframes toast-in {
+    from { opacity: 0; transform: translateX(-50%) translateY(20px); }
+    to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+/* ========== Mobile Modal & Upload Fixes ========== */
+@media (max-width: 768px) {
+    /* Modal full-screen on mobile */
+    .modal-overlay {
+        padding: 0;
+        align-items: flex-start;
     }
 
-    .item-slot {
-        aspect-ratio: 1;
+    .modal-panel {
+        max-height: 100vh;
+        border-radius: 0;
+        max-width: 100% !important;
+        animation: none;
     }
 
-    .item-image {
-        padding: 8px;
+    /* Override inline style padding:24px on modal forms */
+    .modal-panel form,
+    .modal-panel > div[style*="padding:24px"],
+    .modal-panel > div > div[style*="padding:24px"] {
+        padding: 16px !important;
+    }
+
+    /* Upload area shrink */
+    .upload-area {
+        padding: 20px !important;
+    }
+
+    .upload-area[style*="min-height:150px"] {
+        min-height: 100px !important;
+    }
+
+    /* Upload preview: stack vertically on mobile */
+    .upload-area div[style*="display:flex;align-items:center;gap:20px"] {
+        flex-direction: column !important;
+        gap: 12px !important;
+    }
+
+    .upload-preview {
+        max-width: 120px;
+        max-height: 120px;
+    }
+
+    /* Override inline margin-top on form sections */
+    .modal-panel div[style*="margin-top:20px"] {
+        margin-top: 12px !important;
+    }
+
+    .modal-panel div[style*="margin-top:16px"] {
+        margin-top: 10px !important;
+    }
+
+    /* Override inline footer bar spacing */
+    .modal-panel div[style*="margin-top:24px;padding-top:20px"] {
+        margin-top: 16px !important;
+        padding-top: 12px !important;
+    }
+
+    /* Toolbar select width */
+    .toolbar-search input,
+    select.codex-input[style*="width:120px"] {
+        width: 100% !important;
+        min-width: 0 !important;
+    }
+
+    .toolbar-search {
+        flex: 1 1 100%;
+        min-width: 0;
+        max-width: none;
+    }
+
+    .toolbar-group {
+        border-left: none;
+        padding: 0 4px;
+    }
+
+    .toolbar-actions .codex-btn {
+        padding: 8px 10px;
+        min-height: 36px;
+        font-size: 0.75rem;
+    }
+
+    /* Batch file list */
+    .batch-file-list {
+        grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+        max-height: 150px;
+    }
+
+    .batch-file-thumb {
+        width: 50px;
+        height: 50px;
+    }
+
+    /* Emotions modal list */
+    .modal-panel div[style*="padding:40px"] {
+        padding: 20px !important;
+    }
+
+    /* Confirm dialog */
+    .modal-panel[style*="max-width:400px"] {
+        max-width: 100% !important;
+    }
+
+    /* Toast notification */
+    .toast-notification {
+        left: 12px;
+        right: 12px;
+        transform: none;
+        bottom: 80px;
+        font-size: 0.8rem;
+        padding: 10px 16px;
+    }
+
+    @keyframes toast-in {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
     }
 }
 
+@media (max-width: 380px) {
+    .modal-panel form,
+    .modal-panel > div[style*="padding:24px"],
+    .modal-panel > div > div[style*="padding:24px"] {
+        padding: 12px !important;
+    }
+
+    .upload-area {
+        padding: 12px !important;
+    }
+
+    .toolbar-actions {
+        gap: 4px;
+    }
+
+    .toolbar-group {
+        gap: 4px;
+        padding: 0;
+    }
+
+    .toolbar-actions .codex-btn {
+        padding: 6px 8px;
+        min-height: 32px;
+        font-size: 0.7rem;
+        gap: 4px;
+    }
+
+    .toolbar-actions .codex-btn svg {
+        width: 12px;
+        height: 12px;
+    }
+
+    .codex-input {
+        padding: 8px 10px;
+        font-size: 0.85rem;
+    }
+}
