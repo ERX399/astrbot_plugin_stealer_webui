@@ -497,6 +497,17 @@ h2 {
     padding-left: 0;
 }
 
+/* Standalone WebUI sort selector */
+.toolbar-sort-select {
+    width: 96px;
+    min-width: 96px;
+    height: 38px;
+    padding: 8px 32px 8px 12px;
+    font-size: 0.8rem;
+    line-height: 1.2;
+    flex-shrink: 0;
+}
+
 /* ========== Inventory Grid ========== */
 .inventory-grid {
     flex: 1;
@@ -1884,7 +1895,15 @@ select.codex-input {
     .toolbar-actions {
         justify-content: center;
     }
-    
+
+    .toolbar-sort-select {
+        width: 88px;
+        min-width: 88px;
+        height: 36px;
+        padding: 7px 28px 7px 10px;
+        font-size: 0.75rem;
+    }
+
     .inventory-grid {
         grid-template-columns: repeat(auto-fill, minmax(var(--slot-size-mobile), 1fr));
         gap: 8px;
