@@ -2077,13 +2077,15 @@ select.codex-input {
     }
 }
 
-/* Touch phones may report a wider CSS viewport when browser zoom is changed.
-   Keep the emoji grid close to the original WebUI density: 4 items per row. */
-@media (hover: none) and (pointer: coarse) and (max-width: 900px) {
+/* Mobile grid normalization.
+   Some mobile browsers report a much wider CSS viewport in desktop-site/zoom modes,
+   which makes auto-fill place 6+ emojis per row. Keep the original WebUI density:
+   4 items per row on phones and portrait mobile desktop-preview pages. */
+@media (max-width: 768px), (hover: none) and (pointer: coarse) and (orientation: portrait) and (max-width: 1600px) {
     .inventory-grid {
         grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 8px;
-        padding: 12px;
+        gap: 6px;
+        padding: 8px;
         justify-content: stretch;
     }
 
@@ -2091,6 +2093,10 @@ select.codex-input {
         width: 100%;
         height: auto;
         aspect-ratio: 1;
+    }
+
+    .item-image {
+        padding: 8px;
     }
 }
 
