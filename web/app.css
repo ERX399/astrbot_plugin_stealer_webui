@@ -23,9 +23,9 @@
     --shadow-color: rgba(0, 0, 0, 0.7);
     --shadow-light: rgba(212, 180, 110, 0.15);
     
-    /* Responsive slot sizes: larger on desktop, compact on mobile */
-    --slot-size: 200px;
-    --slot-size-tablet: 150px;
+    /* Larger slot sizes for better image display */
+    --slot-size: 160px;
+    --slot-size-tablet: 140px;
     --slot-size-mobile: 110px;
     --slot-size-small: 90px;
 }
@@ -513,12 +513,10 @@ h2 {
     flex: 1;
     padding: 24px;
     display: grid;
-    /* Keep emoji slots at a predictable size instead of stretching them to fill the row. */
-    grid-template-columns: repeat(auto-fill, var(--slot-size));
+    grid-template-columns: repeat(auto-fill, minmax(var(--slot-size), 1fr));
     gap: 16px;
     overflow-y: auto;
     align-content: start;
-    justify-content: start;
 }
 
 /* Item Slot */
@@ -531,8 +529,6 @@ h2 {
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    width: var(--slot-size);
-    height: var(--slot-size);
     aspect-ratio: 1;
     border-radius: 8px;
     box-shadow: 0 4px 12px rgba(0,0,0,0.4);
@@ -1846,8 +1842,7 @@ select.codex-input {
     }
     
     .inventory-grid {
-        grid-template-columns: repeat(auto-fill, var(--slot-size-tablet));
-        justify-content: start;
+        grid-template-columns: repeat(auto-fill, minmax(var(--slot-size-tablet), 1fr));
     }
 }
 
@@ -1958,10 +1953,9 @@ select.codex-input {
     }
     
     .inventory-grid {
-        grid-template-columns: repeat(auto-fill, var(--slot-size-mobile));
+        grid-template-columns: repeat(auto-fill, minmax(var(--slot-size-mobile), 1fr));
         gap: 8px;
         padding: 12px;
-        justify-content: start;
     }
     
     .item-info {
@@ -2042,9 +2036,8 @@ select.codex-input {
     }
     
     .inventory-grid {
-        grid-template-columns: repeat(auto-fill, var(--slot-size-small));
+        grid-template-columns: repeat(auto-fill, minmax(var(--slot-size-small), 1fr));
         gap: 6px;
-        justify-content: start;
     }
     
     .item-image {
@@ -2081,7 +2074,7 @@ select.codex-input {
    Some mobile browsers report a much wider CSS viewport in desktop-site/zoom modes,
    which makes auto-fill place 6+ emojis per row. Keep the original WebUI density:
    4 items per row on phones and portrait mobile desktop-preview pages. */
-@media (max-width: 768px), (hover: none) and (pointer: coarse) and (orientation: portrait) and (max-width: 1600px) {
+@media (max-width: 768px), (max-device-width: 768px), (orientation: portrait) and (max-width: 1600px) {
     .inventory-grid {
         grid-template-columns: repeat(4, minmax(0, 1fr));
         gap: 6px;
