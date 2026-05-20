@@ -1719,9 +1719,14 @@ createApp({
         };
 
         const initTheme = () => {
-            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-            theme.value = prefersDark ? 'dark' : 'light';
-            isDarkTheme.value = prefersDark;
+            let savedTheme = null;
+            try {
+                savedTheme = localStorage.getItem('stealer-webui-theme');
+            } catch (e) {
+                savedTheme = null;
+            }
+            theme.value = savedTheme === 'light' || savedTheme === 'dark' ? savedTheme : 'dark';
+            isDarkTheme.value = theme.value === 'dark';
             applyTheme();
         };
 
@@ -1737,6 +1742,9 @@ createApp({
             isDarkTheme.value = !isDarkTheme.value;
             theme.value = isDarkTheme.value ? 'dark' : 'light';
             applyTheme();
+            try {
+                localStorage.setItem('stealer-webui-theme', theme.value);
+            } catch (e) {}
 
             setTimeout(() => {
                 flash.remove();
