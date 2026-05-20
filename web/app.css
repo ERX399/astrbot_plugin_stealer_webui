@@ -1893,8 +1893,9 @@ select.codex-input {
     
     .sidebar {
         width: 100%;
-        flex-direction: row;
-        overflow-x: auto;
+        flex-direction: column;
+        overflow-x: visible;
+        overflow-y: visible;
         padding: 12px;
         max-height: none;
         gap: 8px;
@@ -1906,12 +1907,23 @@ select.codex-input {
     
     .category-list {
         flex-direction: row;
+        flex-wrap: wrap;
         gap: 8px;
+        width: 100%;
+        min-width: 0;
     }
     
     .category-item {
+        flex: 0 1 auto;
+        min-width: max-content;
+        max-width: 100%;
         white-space: nowrap;
-        min-width: auto;
+    }
+
+    .category-item,
+    .category-item:hover,
+    .category-item.active {
+        transform: none !important;
     }
     
     .item-stats {
@@ -2107,26 +2119,22 @@ select.codex-input {
     }
 }
 
-/* Mobile grid normalization.
-   Some mobile browsers report a much wider CSS viewport in desktop-site/zoom modes,
-   which makes auto-fill place 6+ emojis per row. Keep the original WebUI density:
-   4 items per row on phones and portrait mobile desktop-preview pages. */
-@media (max-width: 768px), (max-device-width: 768px), (orientation: portrait) and (max-width: 1600px) {
+/* Mobile grid keeps auto-fit behavior; avoid forcing a fixed 4-column layout. */
+@media (max-width: 768px), (max-device-width: 768px) {
     .inventory-grid {
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 6px;
-        padding: 8px;
+        grid-template-columns: repeat(auto-fill, minmax(var(--slot-size-mobile), 1fr));
+        gap: 10px;
+        padding: 10px;
         justify-content: stretch;
     }
 
     .item-slot {
         width: 100%;
         height: auto;
-        aspect-ratio: 1;
     }
 
     .item-image {
-        padding: 8px;
+        padding: 6px;
     }
 }
 
@@ -2857,77 +2865,101 @@ select.codex-input {
 }
 
 /* ========== Standalone WebUI detail preview adaptive tuning ==========
-   Keep the original stylesheet as baseline, then fine-tune the independent
-   detail modal: slightly smaller frame, larger image utilization, and
-   better adaptation across desktop/mobile/desktop-site modes. */
-.modal-panel {
+   Scope detail-preview tuning to .item-detail-modal only. */
+.item-detail-modal {
     max-width: min(860px, calc(100vw - 24px));
 }
 
-.item-detail {
-    min-height: clamp(360px, 68vh, 460px);
+.item-detail-modal .item-detail {
+    min-height: clamp(340px, 64vh, 440px);
 }
 
-.item-preview {
-    min-height: clamp(320px, 58vh, 420px);
-    padding: clamp(16px, 3vw, 28px);
+.item-detail-modal .item-preview {
+    min-height: clamp(300px, 54vh, 400px);
+    padding: clamp(14px, 2.6vw, 24px);
 }
 
-.item-preview img {
+.item-detail-modal .item-preview img {
     display: block;
-    width: min(100%, 520px);
-    height: min(58vh, 420px);
+    width: min(100%, 500px);
+    height: min(54vh, 400px);
     max-width: 100%;
-    max-height: min(58vh, 420px);
+    max-height: min(54vh, 400px);
     object-fit: contain;
 }
 
 /* Medium screens: stack detail content earlier and keep preview compact. */
 @media (max-width: 1024px) {
-    .item-detail {
+    .item-detail-modal {
+        max-width: min(760px, calc(100vw - 20px));
+        max-height: calc(100vh - 20px);
+    }
+
+    .item-detail-modal .item-detail {
         min-height: auto;
     }
 
-    .item-preview {
-        min-height: clamp(280px, 52vh, 360px);
-        padding: clamp(14px, 3vw, 20px);
+    .item-detail-modal .item-preview {
+        min-height: clamp(240px, 44vh, 320px);
+        padding: clamp(12px, 2.6vw, 18px);
     }
 
-    .item-preview img {
-        width: min(100%, 440px);
-        height: min(52vh, 360px);
-        max-height: min(52vh, 360px);
+    .item-detail-modal .item-preview img {
+        width: min(100%, 400px);
+        height: min(44vh, 320px);
+        max-height: min(44vh, 320px);
     }
 }
 
-/* Phones: avoid a huge detail modal while still making the emoji itself larger. */
+/* Phones: keep detail modal comfortably smaller than full screen. */
 @media (max-width: 768px), (max-device-width: 768px) {
-    .modal-panel {
-        max-width: 100%;
+    .modal-overlay:has(.item-detail-modal) {
+        padding: 10px;
+        align-items: flex-start;
     }
 
-    .item-preview {
-        min-height: clamp(240px, 48vh, 320px);
+    .item-detail-modal {
+        width: calc(100vw - 20px);
+        max-width: calc(100vw - 20px) !important;
+        max-height: calc(100vh - 20px) !important;
+        margin: 10px auto;
+        border-radius: 8px !important;
+    }
+
+    .item-detail-modal .modal-header {
+        padding: 10px 12px;
+    }
+
+    .item-detail-modal .modal-content {
+        max-height: calc(100vh - 96px);
+    }
+
+    .item-detail-modal .item-preview {
+        min-height: clamp(190px, 36vh, 260px);
+        padding: 10px;
+    }
+
+    .item-detail-modal .item-preview img {
+        width: min(100%, 320px);
+        height: min(36vh, 260px);
+        max-height: min(36vh, 260px);
+    }
+
+    .item-detail-modal .item-stats {
         padding: 12px;
-    }
-
-    .item-preview img {
-        width: min(100%, 360px);
-        height: min(48vh, 320px);
-        max-height: min(48vh, 320px);
     }
 }
 
 /* Very small devices. */
 @media (max-width: 380px) {
-    .item-preview {
-        min-height: clamp(220px, 44vh, 280px);
-        padding: 10px;
+    .item-detail-modal .item-preview {
+        min-height: clamp(170px, 32vh, 230px);
+        padding: 8px;
     }
 
-    .item-preview img {
-        width: min(100%, 320px);
-        height: min(44vh, 280px);
-        max-height: min(44vh, 280px);
+    .item-detail-modal .item-preview img {
+        width: min(100%, 280px);
+        height: min(32vh, 230px);
+        max-height: min(32vh, 230px);
     }
 }
