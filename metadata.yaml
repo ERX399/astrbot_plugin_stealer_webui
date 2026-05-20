@@ -1,5 +1,5 @@
 name: astrbot_plugin_stealer_webui
-display_name: Stealer WebUI补丁
+display_name: 表情包小偷 WebUI补丁
 desc: 将 astrbot_plugin_stealer 表情管理 WebUI 独立到外部端口
 version: v0.2.5
 author: ERX399
