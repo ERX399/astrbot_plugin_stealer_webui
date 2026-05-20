@@ -1,0 +1,209 @@
+/* Independent compact overrides for Stealer WebUI */
+:root {
+    --slot-size: 116px;
+    --slot-size-tablet: 104px;
+    --slot-size-mobile: 82px;
+    --slot-size-small: 72px;
+}
+
+body {
+    font-size: 13px;
+    line-height: 1.45;
+}
+
+.codex-header {
+    padding: 12px 18px !important;
+    min-height: unset !important;
+    gap: 12px !important;
+}
+
+.header-title {
+    gap: 10px !important;
+}
+
+.header-icon {
+    width: 42px !important;
+    height: 42px !important;
+}
+
+.header-icon svg {
+    width: 22px !important;
+    height: 22px !important;
+}
+
+.header-text h1 {
+    font-size: 1.28rem !important;
+    letter-spacing: .08em !important;
+    margin: 0 !important;
+}
+
+.header-text p {
+    font-size: .72rem !important;
+    margin-top: 2px !important;
+}
+
+.stats-bar {
+    gap: 8px !important;
+}
+
+.stat-item {
+    padding: 7px 10px !important;
+    min-width: 62px !important;
+}
+
+.stat-value {
+    font-size: 1rem !important;
+}
+
+.stat-label {
+    font-size: .62rem !important;
+}
+
+.theme-toggle {
+    width: 38px !important;
+    height: 38px !important;
+}
+
+.main-container {
+    padding: 12px !important;
+    gap: 12px !important;
+    max-width: 1280px !important;
+}
+
+.sidebar {
+    width: 190px !important;
+    padding: 12px !important;
+}
+
+.sidebar-title {
+    font-size: .8rem !important;
+    margin-bottom: 10px !important;
+}
+
+.category-item {
+    padding: 7px 9px !important;
+    margin-bottom: 5px !important;
+    font-size: .82rem !important;
+}
+
+.category-count {
+    min-width: 24px !important;
+    padding: 1px 6px !important;
+    font-size: .7rem !important;
+}
+
+.inventory-panel {
+    padding: 12px !important;
+}
+
+.inventory-toolbar {
+    padding: 9px !important;
+    gap: 8px !important;
+    margin-bottom: 12px !important;
+}
+
+.toolbar-search input,
+.codex-input {
+    height: 34px !important;
+    font-size: .82rem !important;
+    padding-top: 6px !important;
+    padding-bottom: 6px !important;
+}
+
+.codex-btn {
+    min-height: 32px !important;
+    padding: 6px 10px !important;
+    font-size: .78rem !important;
+    gap: 5px !important;
+}
+
+.toolbar-actions,
+.toolbar-group {
+    gap: 6px !important;
+}
+
+.inventory-grid {
+    grid-template-columns: repeat(auto-fill, minmax(var(--slot-size), 1fr)) !important;
+    gap: 10px !important;
+}
+
+.item-slot {
+    min-height: 146px !important;
+    padding: 7px !important;
+}
+
+.item-image {
+    height: var(--slot-size) !important;
+}
+
+.item-info {
+    padding-top: 6px !important;
+}
+
+.item-category {
+    font-size: .76rem !important;
+}
+
+.scope-pill {
+    font-size: .62rem !important;
+    padding: 1px 5px !important;
+}
+
+.pagination-bar {
+    margin-top: 12px !important;
+    padding: 8px !important;
+}
+
+.modal-panel {
+    max-width: min(920px, calc(100vw - 28px)) !important;
+    max-height: calc(100vh - 28px) !important;
+    padding: 14px !important;
+}
+
+.item-preview img,
+.preview-image img {
+    max-height: 52vh !important;
+}
+
+.form-grid,
+.edit-form-grid {
+    gap: 10px !important;
+}
+
+@media (max-width: 768px) {
+    :root {
+        --slot-size: 86px;
+        --slot-size-mobile: 76px;
+    }
+
+    .codex-header {
+        padding: 10px 12px !important;
+    }
+
+    .header-text h1 {
+        font-size: 1.05rem !important;
+    }
+
+    .main-container {
+        padding: 8px !important;
+        gap: 8px !important;
+    }
+
+    .sidebar {
+        width: 100% !important;
+        padding: 9px !important;
+    }
+
+    .inventory-panel {
+        padding: 9px !important;
+    }
+
+    .inventory-grid {
+        gap: 7px !important;
+    }
+
+    .item-slot {
+        min-height: 112px !important;
+        padding: 5px !important;
+    }
+}

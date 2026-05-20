@@ -1,0 +1,65 @@
+{
+  "webui_host": {
+    "description": "WebUI监听地址",
+    "type": "string",
+    "default": "0.0.0.0",
+    "hint": "独立 WebUI 监听地址"
+  },
+  "webui_port": {
+    "description": "WebUI端口",
+    "type": "int",
+    "default": 9191,
+    "hint": "独立 WebUI 监听端口"
+  },
+  "webui_password": {
+    "description": "WebUI访问密码",
+    "type": "string",
+    "default": "",
+    "secret": true,
+    "is_secret": true,
+    "format": "password",
+    "hint": "部分 AstrBot 版本可能明文显示"
+  },
+  "stealer_plugin_name": {
+    "description": "Stealer插件目录名",
+    "type": "string",
+    "default": "astrbot_plugin_stealer",
+    "hint": "用于推断 plugin_data 下的数据目录"
+  },
+  "stealer_data_dir": {
+    "description": "Stealer数据目录覆盖",
+    "type": "string",
+    "default": "",
+    "hint": "可选留空时自动尝试从 StarTools.get_data_dir() 的同级目录推断 astrbot_plugin_stealer 数据目录"
+  },
+  "release_occupied_port": {
+    "description": "端口占用时自动释放",
+    "type": "bool",
+    "default": true,
+    "hint": "端口被旧进程占用时尝试释放"
+  },
+  "debug": {
+    "description": "调试日志",
+    "type": "bool",
+    "default": false,
+    "hint": "输出更详细的 WebUI 调试日志"
+  },
+  "protect_original_data": {
+    "description": "保护原插件数据",
+    "type": "bool",
+    "default": true,
+    "hint": "默认开启。开启后拒绝删除、移动、分类删除等会影响原 Stealer 文件/配置的操作"
+  },
+  "allow_destructive_operations": {
+    "description": "允许破坏性操作",
+    "type": "bool",
+    "default": false,
+    "hint": "默认关闭。仅在你明确需要通过本 WebUI 删除/移动原 Stealer 文件时开启"
+  },
+  "backup_on_write": {
+    "description": "写入前自动备份",
+    "type": "bool",
+    "default": true,
+    "hint": "写入 categories.json、category_info.json、cache/index_cache.json 前自动备份到 .stealer_webui_backups"
+  }
+}
