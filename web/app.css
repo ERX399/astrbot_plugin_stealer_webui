@@ -2988,3 +2988,146 @@ select.codex-input {
         max-height: min(32vh, 230px);
     }
 }
+
+/* ========== Mobile modal compact/adaptive override ==========
+   Keep this block at the end so it wins over earlier mobile modal rules. */
+@media (max-width: 768px), (max-device-width: 768px) {
+    .modal-panel {
+        /* 10% shorter than full viewport on mobile */
+        max-height: 90vh !important;
+        font-size: clamp(12px, 3.2vw, 14px);
+        line-height: 1.45;
+        border-radius: 8px !important;
+        overflow: hidden;
+    }
+
+    .modal-content {
+        max-height: calc(90vh - 96px) !important;
+        font-size: 0.85em;
+    }
+
+    .modal-header {
+        padding: 8px 12px !important;
+        min-height: auto;
+        gap: 8px;
+    }
+
+    .modal-header h2 {
+        font-size: clamp(0.82rem, 3.8vw, 0.98rem) !important;
+        line-height: 1.25;
+    }
+
+    .modal-close {
+        width: 30px;
+        height: 30px;
+        min-width: 30px;
+        flex: 0 0 30px;
+        font-size: 0.85rem;
+    }
+
+    .modal-panel form,
+    .modal-panel > div[style*="padding:24px"],
+    .modal-panel > div > div[style*="padding:24px"],
+    .modal-panel div[style*="padding:40px"] {
+        padding: 13px !important; /* about 15% smaller than 16px */
+    }
+
+    .modal-panel div[style*="margin-top:20px"] {
+        margin-top: 10px !important;
+    }
+
+    .modal-panel div[style*="margin-top:16px"] {
+        margin-top: 8px !important;
+    }
+
+    .modal-actions {
+        padding: 10px !important;
+        gap: 8px !important;
+        font-size: clamp(0.68rem, 3vw, 0.78rem);
+    }
+
+    .modal-actions .codex-btn {
+        min-width: 52px !important;
+        min-height: 32px;
+        padding: 8px 10px !important;
+        font-size: clamp(0.68rem, 3vw, 0.78rem) !important;
+        line-height: 1.2;
+        gap: 5px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .modal-actions svg,
+    .modal-actions .codex-btn svg {
+        width: 1em !important;
+        height: 1em !important;
+        min-width: 1em;
+        max-width: 1.1em;
+        max-height: 1.1em;
+        flex: 0 0 auto;
+        display: inline-block;
+        object-fit: contain;
+    }
+
+    .codex-input,
+    .modal-panel input,
+    .modal-panel textarea,
+    .modal-panel select {
+        font-size: clamp(0.76rem, 3.2vw, 0.88rem) !important;
+        line-height: 1.35;
+    }
+
+    .item-detail-modal {
+        max-height: calc(90vh - 12px) !important;
+    }
+
+    .item-detail-modal .modal-content {
+        max-height: calc(90vh - 86px) !important;
+    }
+
+    .item-detail-modal .item-detail {
+        font-size: 0.85em;
+    }
+
+    .item-detail-modal .item-preview {
+        min-height: clamp(160px, 32vh, 235px) !important;
+        padding: 8px !important;
+    }
+
+    .item-detail-modal .item-preview img,
+    .item-detail-modal .item-preview svg {
+        width: min(100%, 280px) !important;
+        height: min(32vh, 235px) !important;
+        max-height: min(32vh, 235px) !important;
+        object-fit: contain;
+    }
+
+    .item-detail-modal .item-stats {
+        padding: 10px !important;
+        gap: 2px;
+        font-size: 0.85em;
+    }
+
+    .stat-row {
+        padding: 7px 0;
+    }
+}
+
+@media (max-width: 380px) {
+    .modal-panel {
+        font-size: clamp(11px, 3.4vw, 13px);
+        max-height: 90vh !important;
+    }
+
+    .modal-actions {
+        padding: 8px !important;
+        gap: 6px !important;
+    }
+
+    .modal-actions .codex-btn {
+        min-width: 48px !important;
+        min-height: 30px;
+        padding: 7px 8px !important;
+    }
+}
