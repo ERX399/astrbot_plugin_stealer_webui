@@ -1968,7 +1968,7 @@ select.codex-input {
 @media (max-width: 768px) {
     :root {
         --slot-size: var(--slot-size-mobile);
-        --slot-min: clamp(104px, 28vw, 148px);
+        --slot-min: clamp(86px, 22vw, 132px);
     }
     
     .codex-header {
@@ -2023,8 +2023,8 @@ select.codex-input {
     
     .inventory-grid {
         grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--slot-min)), 1fr));
-        gap: 10px;
-        padding: 12px;
+        gap: 8px;
+        padding: 10px;
     }
     
     .item-info {
@@ -2102,7 +2102,7 @@ select.codex-input {
 @media (max-width: 380px) {
     :root {
         --slot-size: var(--slot-size-small);
-        --slot-min: clamp(98px, 42vw, 138px);
+        --slot-min: clamp(82px, 40vw, 120px);
     }
     
     .inventory-grid {
@@ -2144,8 +2144,8 @@ select.codex-input {
 @media (max-width: 768px), (max-device-width: 768px) {
     .inventory-grid {
         grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--slot-min)), 1fr));
-        gap: 10px;
-        padding: 10px;
+        gap: 8px;
+        padding: 8px;
         justify-content: stretch;
     }
 
