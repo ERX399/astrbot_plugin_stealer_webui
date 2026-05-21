@@ -29,7 +29,7 @@
     --slot-size-mobile: 110px;
     --slot-size-small: 90px;
     /* Adaptive minimum card width; grid decides columns automatically. */
-    --slot-min: clamp(109px, 9.35vw, 143px);
+    --slot-min: 146px;
 }
 
 /* Light Theme - Soft Cream & Deep Brown */
@@ -515,11 +515,11 @@ h2 {
     flex: 1;
     padding: 24px;
     display: grid;
-    grid-template-columns: repeat(auto-fill, var(--slot-min));
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--slot-min)), 1fr));
     gap: 18px;
     overflow-y: auto;
     align-content: start;
-    justify-content: start;
+    justify-content: stretch;
 }
 
 /* Item Slot */
@@ -1879,11 +1879,11 @@ select.codex-input {
 @media (max-width: 1200px) {
     :root {
         --slot-size: var(--slot-size-tablet);
-        --slot-min: clamp(102px, 12.75vw, 134px);
+        --slot-min: 146px;
     }
     
     .inventory-grid {
-        grid-template-columns: repeat(auto-fill, var(--slot-min));
+        grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--slot-min)), 1fr));
     }
 }
 
@@ -1969,7 +1969,7 @@ select.codex-input {
 @media (max-width: 768px) {
     :root {
         --slot-size: var(--slot-size-mobile);
-        --slot-min: clamp(73px, 18.7vw, 112px);
+        --slot-min: 146px;
     }
     
     .codex-header {
@@ -2023,7 +2023,7 @@ select.codex-input {
     }
     
     .inventory-grid {
-        grid-template-columns: repeat(auto-fill, var(--slot-min));
+        grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--slot-min)), 1fr));
         gap: 8px;
         padding: 10px;
     }
@@ -2103,11 +2103,11 @@ select.codex-input {
 @media (max-width: 380px) {
     :root {
         --slot-size: var(--slot-size-small);
-        --slot-min: clamp(70px, 34vw, 102px);
+        --slot-min: 146px;
     }
     
     .inventory-grid {
-        grid-template-columns: repeat(auto-fill, var(--slot-min));
+        grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--slot-min)), 1fr));
         gap: 6px;
     }
     
@@ -2144,10 +2144,10 @@ select.codex-input {
 /* Mobile grid adaptive tuning: keep natural flow instead of controlling column count. */
 @media (max-width: 768px), (max-device-width: 768px) {
     .inventory-grid {
-        grid-template-columns: repeat(auto-fill, var(--slot-min));
+        grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--slot-min)), 1fr));
         gap: 8px;
         padding: 8px;
-        justify-content: start;
+        justify-content: stretch;
     }
 
     .item-slot {
