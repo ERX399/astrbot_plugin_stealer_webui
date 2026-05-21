@@ -3131,3 +3131,31 @@ select.codex-input {
         padding: 7px 8px !important;
     }
 }
+
+
+/* ========== Mobile modal centering override ==========
+   Keep modal-panel centered on phones while preserving compact sizing. */
+@media (max-width: 768px), (max-device-width: 768px) {
+    .modal-overlay {
+        align-items: center !important;
+        justify-content: center !important;
+        padding: 10px !important;
+    }
+
+    .modal-panel {
+        margin: auto !important;
+        max-height: 90vh !important;
+        max-width: calc(100vw - 20px) !important;
+    }
+
+    .item-detail-modal {
+        margin: auto !important;
+        max-height: calc(90vh - 12px) !important;
+    }
+
+    .modal-overlay:has(.item-detail-modal) {
+        align-items: center !important;
+        justify-content: center !important;
+        padding: 10px !important;
+    }
+}
