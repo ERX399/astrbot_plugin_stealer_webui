@@ -9,6 +9,8 @@ import signal
 import sqlite3
 import threading
 import time
+import tempfile
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
@@ -288,8 +290,91 @@ class StealerDataStore:
                 return result
         return {r["path"]:r for r in self._scan_files()}
 
+    def _sync_db_from_index(self, index: dict[str, dict[str, Any]]) -> None:
+        """按原插件 database_service.sync_index 思路，把完整 index 同步到 emoji.db。
+
+        这样 fallback 模式下 update/move/scope/delete 不会只改 JSON index，
+        还会同步 emoji / emoji_tag / emoji_scene，避免数据残留或不一致。
+        """
+        db_path = next((p for p in getattr(self, "db_paths", [self.db_path]) if Path(p).exists()), None)
+        if not db_path:
+            return
+
+        desired: dict[str, dict[str, Any]] = {}
+        for raw_path, meta in (index or {}).items():
+            if not isinstance(meta, dict):
+                continue
+            norm = self._normalize_index_record(str(raw_path), meta)
+            if not norm:
+                continue
+            desired[norm[0]] = norm[1]
+
+        try:
+            conn = sqlite3.connect(str(db_path))
+            try:
+                conn.execute("BEGIN")
+                existing = {
+                    str(row[0])
+                    for row in conn.execute("SELECT path FROM emoji").fetchall()
+                }
+                desired_paths = set(desired.keys())
+
+                for stale_path in existing - desired_paths:
+                    conn.execute("DELETE FROM emoji_tag WHERE path = ?", (stale_path,))
+                    conn.execute("DELETE FROM emoji_scene WHERE path = ?", (stale_path,))
+                    conn.execute("DELETE FROM emoji WHERE path = ?", (stale_path,))
+
+                now = int(time.time())
+                for path, meta in desired.items():
+                    p = Path(path)
+                    conn.execute(
+                        """
+                        INSERT OR REPLACE INTO emoji
+                        (path, hash, phash, category, desc, source, origin_target,
+                         scope_mode, created_at, use_count, last_used_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            path,
+                            str(meta.get("hash") or p.stem),
+                            meta.get("phash"),
+                            str(meta.get("category") or p.parent.name or "unknown"),
+                            str(meta.get("desc") or ""),
+                            meta.get("source"),
+                            str(meta.get("origin_target") or ""),
+                            _norm_scope(meta.get("scope_mode")),
+                            int(meta.get("created_at") or (p.stat().st_mtime if p.exists() else now)),
+                            int(meta.get("use_count") or 0),
+                            int(meta.get("last_used_at") or 0),
+                        ),
+                    )
+
+                    conn.execute("DELETE FROM emoji_tag WHERE path = ?", (path,))
+                    conn.execute("DELETE FROM emoji_scene WHERE path = ?", (path,))
+
+                    for tag in _split_csv(meta.get("tags", [])):
+                        conn.execute(
+                            "INSERT OR IGNORE INTO emoji_tag (path, tag) VALUES (?, ?)",
+                            (path, tag),
+                        )
+                    for scene in _split_csv(meta.get("scenes", meta.get("scene", []))):
+                        conn.execute(
+                            "INSERT OR IGNORE INTO emoji_scene (path, scene) VALUES (?, ?)",
+                            (path, scene),
+                        )
+
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+            finally:
+                conn.close()
+        except Exception as e:
+            logger.warning(f"[StealerWebUI] 同步 emoji.db 失败: {e}")
+
     def save_index_json(self, index: dict[str, dict[str, Any]]):
         self._write_json(self.cache_dir/"index_cache.json", {p:{k:v for k,v in m.items() if k!="path"} for p,m in index.items()})
+        self._sync_db_from_index(index)
 
     def list_images(self, page:int, size:int, category:str|None, q:str, sort:str) -> dict:
         index=self.load_index(); images=[]; counts={}
@@ -333,19 +418,170 @@ class StealerDataStore:
             shutil.move(str(old), str(new)); del index[target]; target=str(new); meta["path"]=target; meta["category"]=new_cat
         index[target]=meta; self.save_index_json(index); return True, ""
 
-    def delete_hashes(self, hashes:set[str]) -> int:
+    def _delete_from_db(self, removed: list[tuple[str, str]]) -> None:
+        """同步清理原插件 sqlite 数据库，避免只删文件/索引导致残留。"""
+        if not removed:
+            return
+        db_path = next((p for p in getattr(self, "db_paths", [self.db_path]) if Path(p).exists()), None)
+        if not db_path:
+            return
+        try:
+            conn = sqlite3.connect(str(db_path))
+            try:
+                conn.execute("BEGIN")
+                for old_path, img_hash in removed:
+                    # DB 里可能保存旧绝对路径；同时按 hash 清理更稳。
+                    conn.execute(
+                        "DELETE FROM emoji_tag WHERE path = ? OR path IN (SELECT path FROM emoji WHERE hash = ?)",
+                        (old_path, img_hash),
+                    )
+                    conn.execute(
+                        "DELETE FROM emoji_scene WHERE path = ? OR path IN (SELECT path FROM emoji WHERE hash = ?)",
+                        (old_path, img_hash),
+                    )
+                    conn.execute("DELETE FROM emoji WHERE path = ? OR hash = ?", (old_path, img_hash))
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+            finally:
+                conn.close()
+        except Exception as e:
+            logger.warning(f"[StealerWebUI] 清理 emoji.db 删除残留失败: {e}")
+
+    def _add_blacklist_hashes(self, hashes: set[str]) -> None:
+        if not hashes:
+            return
+        path = self.cache_dir / "blacklist_cache.json"
+        data = self._read_json(path, {})
+        if not isinstance(data, dict):
+            data = {}
+        now = int(time.time())
+        for h in hashes:
+            if h:
+                data[str(h)] = now
+        self._write_json(path, data)
+
+    def delete_hashes(self, hashes:set[str], blacklist: bool = False) -> int:
         self._deny_destructive()
-        index=self.load_index(); deleted=0
+        hashes = {str(h).strip() for h in hashes if str(h).strip()}
+        if not hashes:
+            return 0
+        index=self.load_index(); deleted=0; removed=[]
         for p,m in list(index.items()):
-            if str(m.get("hash") or Path(p).stem) in hashes:
+            img_hash = str(m.get("hash") or Path(p).stem)
+            if img_hash in hashes:
                 target=self._assert_inside_data_dir(Path(p))
+                old_db_path = str(m.get("path") or p)
                 if target.exists():
                     quarantine = self.backup_dir / "deleted_files" / datetime.now().strftime("%Y%m%d_%H%M%S") / target.relative_to(self.data_dir)
                     quarantine.parent.mkdir(parents=True, exist_ok=True)
                     shutil.move(str(target), str(quarantine))
                     deleted+=1
+                else:
+                    # 文件已不存在也要清理索引/数据库残留。
+                    deleted+=1
+                removed.append((old_db_path, img_hash))
                 index.pop(p,None)
-        self.save_index_json(index); return deleted
+        self.save_index_json(index)
+        self._delete_from_db(removed)
+        if blacklist:
+            self._add_blacklist_hashes({h for _, h in removed})
+        return deleted
+
+
+    def persist_upload(
+        self,
+        content: bytes,
+        ext: str,
+        category: str = "",
+        tags: list[str] | None = None,
+        desc: str = "",
+        scenes: list[str] | None = None,
+        file_hash: str | None = None,
+    ) -> dict:
+        self._deny_destructive()
+        ext = (ext or ".png").lower()
+        if ext not in ALLOWED_EXTS:
+            raise ValueError(f"不支持的文件类型: {ext}")
+        if not content:
+            raise ValueError("文件内容为空")
+
+        category = str(category or "").strip() or (self.get_category_keys()[0] if self.get_category_keys() else "unknown")
+        img_hash = file_hash or hashlib.sha256(content).hexdigest()
+
+        existing_path, existing_meta = self.find_by_hash(img_hash)
+        if existing_path and Path(existing_path).exists():
+            return {
+                "hash": img_hash,
+                "category": str((existing_meta or {}).get("category") or category),
+                "path": existing_path,
+                "duplicate": True,
+            }
+
+        ts = int(time.time())
+        filename = f"{ts}_{uuid.uuid4().hex[:8]}{ext}"
+        dst_dir = self._assert_inside_data_dir(self.categories_dir / self._ensure_safe_filename(category))
+        dst_dir.mkdir(parents=True, exist_ok=True)
+        file_path = self._assert_inside_data_dir(dst_dir / filename)
+        file_path.write_bytes(content)
+
+        index = self.load_index()
+        meta = {
+            "path": str(file_path),
+            "hash": img_hash,
+            "category": category,
+            "desc": str(desc or ""),
+            "tags": _split_csv(tags or []),
+            "scenes": _split_csv(scenes or []),
+            "scope_mode": "public",
+            "origin_target": "",
+            "created_at": ts,
+            "use_count": 0,
+            "last_used_at": 0,
+        }
+        index[str(file_path)] = meta
+        self.save_index_json(index)
+        return {"hash": img_hash, "category": category, "path": str(file_path), "duplicate": False}
+
+    def delete_category(self, key: str) -> dict:
+        key = str(key or "").strip()
+        if not key:
+            return {"success": False, "error": "分类Key无效"}
+        keys = self.get_category_keys()
+        if key not in keys:
+            return {"success": False, "error": "分类不存在"}
+        if len(keys) <= 1:
+            return {"success": False, "error": "至少需要保留1个分类"}
+
+        index = self.load_index()
+        hashes = {
+            str(m.get("hash") or Path(p).stem)
+            for p, m in index.items()
+            if isinstance(m, dict) and str(m.get("category") or Path(p).parent.name) == key
+        }
+        deleted = self.delete_hashes(hashes) if hashes else 0
+
+        updated = [k for k in keys if k != key]
+        info = self._read_json(self.category_info_path, {})
+        if isinstance(info, dict):
+            info.pop(key, None)
+        else:
+            info = {}
+
+        self._write_json(self.categories_path, updated)
+        self._write_json(self.category_info_path, info)
+
+        cat_dir = self._assert_inside_data_dir(self.categories_dir / self._ensure_safe_filename(key))
+        try:
+            if cat_dir.exists():
+                shutil.rmtree(cat_dir, ignore_errors=True)
+        except Exception as e:
+            logger.warning(f"[StealerWebUI] 删除分类目录失败 {cat_dir}: {e}")
+
+        # delete_hashes 已同步过 index/db；这里再确保分类配置删除后没有残留分类目录索引。
+        self.save_index_json(self.load_index())
+        return {"success": True, "deleted": key, "categories": updated, "deleted_files": deleted}
 
     def move_hashes(self, hashes:set[str], category:str) -> int:
         self._deny_destructive()
@@ -504,6 +740,10 @@ class OriginalStealerBridge:
         return True, ""
 
     async def delete_hashes(self, hashes: set[str], blacklist: bool = False) -> int:
+        hashes = {str(h).strip() for h in hashes if str(h).strip()}
+        if not hashes:
+            return 0
+
         index = dict(await self.load_index())
         removed: list[tuple[str, str]] = []
         for p, m in list(index.items()):
@@ -511,9 +751,28 @@ class OriginalStealerBridge:
             if h in hashes:
                 removed.append((p, h))
                 index.pop(p, None)
+
+        # 先保存/同步索引，让原插件 db_service 能清理 emoji / emoji_tag / emoji_scene。
         await self.save_index(index)
-        deleted = 0
+
+        # 再显式尝试同步一次 DB/cache，兼容原插件不同版本。
+        db = getattr(self.plugin, "db_service", None)
         cache = getattr(self.plugin, "cache_service", None)
+        try:
+            if db and hasattr(db, "sync_index"):
+                await db.sync_index(index)
+            elif db and hasattr(db, "save_index"):
+                await db.save_index(index)
+        except Exception as e:
+            logger.warning(f"[StealerWebUI] 原版数据库同步删除索引失败: {e}")
+
+        try:
+            if cache and hasattr(cache, "set_cache"):
+                await cache.set_cache("index_cache", index, persist=False)
+        except Exception as e:
+            logger.warning(f"[StealerWebUI] 原版缓存同步删除索引失败: {e}")
+
+        deleted = 0
         ips = getattr(self.plugin, "image_processor_service", None)
         for p, h in removed:
             try:
@@ -524,10 +783,33 @@ class OriginalStealerBridge:
                 deleted += 1
             except Exception as e:
                 logger.warning(f"[StealerWebUI] 原版删除调用失败 {p}: {e}")
+
             if blacklist and cache and hasattr(cache, "set"):
                 await cache.set("blacklist_cache", h, int(time.time()), persist=True)
+
+            # 清理原插件内存缓存，避免删除后仍可从缓存里看到/命中。
+            if cache:
+                try:
+                    caches = getattr(cache, "_caches", None)
+                    lock = getattr(cache, "_lock", None)
+                    def _purge():
+                        if isinstance(caches, dict):
+                            for name in ("image_cache", "text_cache", "desc_cache", "bm25_cache"):
+                                c = caches.get(name)
+                                if hasattr(c, "pop"):
+                                    c.pop(h, None)
+                                    c.pop(p, None)
+                    if lock:
+                        with lock:
+                            _purge()
+                    else:
+                        _purge()
+                except Exception as e:
+                    logger.debug(f"[StealerWebUI] 清理原版内存缓存失败: {e}")
+
             if ips and hasattr(ips, "invalidate_cache"):
                 ips.invalidate_cache(h)
+
         return deleted
 
     async def move_hashes(self, hashes: set[str], category: str) -> int:
@@ -568,14 +850,189 @@ class OriginalStealerBridge:
         return updated, skipped
 
 
+    async def persist_upload(
+        self,
+        content: bytes,
+        ext: str,
+        category: str = "",
+        tags: list[str] | None = None,
+        desc: str = "",
+        scenes: list[str] | None = None,
+        file_hash: str | None = None,
+    ) -> dict:
+        ext = (ext or ".png").lower()
+        if ext not in ALLOWED_EXTS:
+            raise ValueError(f"不支持的文件类型: {ext}")
+        if not content:
+            raise ValueError("文件内容为空")
+
+        cache = getattr(self.plugin, "cache_service", None)
+        img_hash = file_hash or (cache.compute_hash(content) if cache and hasattr(cache, "compute_hash") else hashlib.sha256(content).hexdigest())
+
+        p, meta = await self.find_by_hash(img_hash)
+        if p and Path(p).exists():
+            return {
+                "hash": img_hash,
+                "category": str((meta or {}).get("category") or category or "unknown"),
+                "path": p,
+                "duplicate": True,
+            }
+
+        cfg = getattr(self.plugin, "plugin_config", None)
+        keys = self.category_keys()
+        final_cat = str(category or "").strip() or (keys[0] if keys else "unknown")
+        if cfg and hasattr(cfg, "ensure_category_dir"):
+            dst_dir = cfg.ensure_category_dir(final_cat)
+        else:
+            base = Path(getattr(self.plugin, "base_dir", "")) if getattr(self.plugin, "base_dir", None) else None
+            dst_dir = (base / "categories" / final_cat) if base else Path.cwd() / "categories" / final_cat
+            dst_dir.mkdir(parents=True, exist_ok=True)
+
+        ts = int(time.time())
+        filename = f"{ts}_{uuid.uuid4().hex[:8]}{ext}"
+        file_path = dst_dir / filename
+        await asyncio.to_thread(file_path.write_bytes, content)
+
+        index = dict(await self.load_index())
+        item = {
+            "path": str(file_path),
+            "hash": img_hash,
+            "category": final_cat,
+            "desc": str(desc or ""),
+            "tags": _split_csv(tags or []),
+            "scenes": _split_csv(scenes or []),
+            "scope_mode": "public",
+            "origin_target": "",
+            "created_at": ts,
+            "use_count": 0,
+            "last_used_at": 0,
+        }
+        index[str(file_path)] = item
+        await self.save_index(index)
+        return {"hash": img_hash, "category": final_cat, "path": str(file_path), "duplicate": False}
+
+    async def analyze_image(self, *, img_hash: str = "", img_base64: str = "") -> dict:
+        proc = getattr(self.plugin, "image_processor_service", None)
+        if not proc:
+            return {"success": False, "error": "图片处理服务不可用"}
+
+        file_path = None
+        tmp_file = None
+        if img_hash:
+            p, _ = await self.find_by_hash(img_hash)
+            if p and Path(p).is_file():
+                file_path = p
+
+        if not file_path and img_base64:
+            b64_data = img_base64
+            ext = ".png"
+            if "," in b64_data:
+                header, b64_data = b64_data.split(",", 1)
+                header = header.lower()
+                if "jpeg" in header or "jpg" in header:
+                    ext = ".jpg"
+                elif "gif" in header:
+                    ext = ".gif"
+                elif "webp" in header:
+                    ext = ".webp"
+                elif "bmp" in header:
+                    ext = ".bmp"
+            content = base64.b64decode(b64_data)
+            tmp = tempfile.NamedTemporaryFile(suffix=ext, delete=False)
+            try:
+                tmp.write(content)
+                tmp.close()
+                file_path = tmp.name
+                tmp_file = tmp.name
+            except Exception:
+                try:
+                    tmp.close()
+                except Exception:
+                    pass
+                raise
+
+        if not file_path:
+            return {"success": False, "error": "缺少 hash 或 base64 图片数据"}
+
+        try:
+            cfg = getattr(self.plugin, "plugin_config", None)
+            categories = list(getattr(cfg, "categories", []) or getattr(self.plugin, "categories", []) or [])
+            cat, tags, desc, _, scenes = await proc.classify_image(
+                event=None,
+                file_path=file_path,
+                categories=categories,
+                content_filtration=False,
+            )
+            if cat == getattr(proc, "CATEGORY_FILTERED", None):
+                return {"success": False, "error": "图片内容审核不通过"}
+            if not cat:
+                return {"success": False, "error": "无法识别图片分类"}
+            return {"success": True, "category": cat, "tags": tags or [], "description": desc or "", "desc": desc or "", "scenes": scenes or []}
+        finally:
+            if tmp_file:
+                try:
+                    os.unlink(tmp_file)
+                except Exception:
+                    pass
+
+    async def delete_category(self, key: str) -> dict:
+        key = str(key or "").strip()
+        if not key:
+            return {"success": False, "error": "分类Key无效"}
+
+        cfg = getattr(self.plugin, "plugin_config", None)
+        cur_cats = list(getattr(cfg, "categories", []) or getattr(self.plugin, "categories", []) or [])
+        cur_cats = [str(c) for c in cur_cats]
+        if key not in cur_cats:
+            return {"success": False, "error": "分类不存在"}
+        if len(cur_cats) <= 1:
+            return {"success": False, "error": "至少需要保留1个分类"}
+
+        index = dict(await self.load_index())
+        hashes = {
+            str(m.get("hash") or Path(p).stem)
+            for p, m in index.items()
+            if isinstance(m, dict) and str(m.get("category") or "") == key
+        }
+        deleted = await self.delete_hashes(hashes) if hashes else 0
+
+        updated = [c for c in cur_cats if c != key]
+        if hasattr(self.plugin, "_update_config_from_dict"):
+            self.plugin._update_config_from_dict({"categories": updated})
+        elif cfg is not None:
+            cfg.categories = updated
+            if hasattr(self.plugin, "categories"):
+                self.plugin.categories = updated
+
+        if cfg is not None and hasattr(cfg, "category_info"):
+            try:
+                if key in getattr(cfg, "category_info", {}):
+                    del cfg.category_info[key]
+                if hasattr(cfg, "save_category_info"):
+                    cfg.save_category_info()
+            except Exception as e:
+                logger.warning(f"[StealerWebUI] 保存分类信息失败: {e}")
+
+        base_dir = Path(getattr(self.plugin, "base_dir", "")) if getattr(self.plugin, "base_dir", None) else None
+        cat_dir = base_dir / "categories" / key if base_dir else None
+        try:
+            if cat_dir and cat_dir.exists():
+                await asyncio.to_thread(shutil.rmtree, cat_dir, True)
+        except Exception as e:
+            logger.warning(f"[StealerWebUI] 删除原版分类目录失败 {cat_dir}: {e}")
+
+        return {"success": True, "deleted": key, "categories": updated, "deleted_files": deleted}
+
+
+
 class WebUIRunner:
     def __init__(self, host:str, port:int, password:str, stealer_data_dir:Path, release_occupied_port:bool=True, protect_original_data: bool=True, allow_destructive_operations: bool=False, backup_on_write: bool=True, source_plugin: Any | None=None):
         self.host=host; self.port=port; self.password=password; self.source_plugin=source_plugin; self.bridge=OriginalStealerBridge(source_plugin) if source_plugin else None; self.store=StealerDataStore(stealer_data_dir, protect_original_data=protect_original_data, allow_destructive_operations=allow_destructive_operations, backup_on_write=backup_on_write); self.release_occupied_port=release_occupied_port
         if self.bridge:
             logger.info("[StealerWebUI] 已连接原版 astrbot_plugin_stealer 实例，写操作将通过原版服务执行")
         else:
-            logger.warning("[StealerWebUI] 未找到原版 astrbot_plugin_stealer 实例，写操作将被禁用")
-        self.loop=None; self.runner=None; self.site=None; self.thread=None; self._started=threading.Event()
+            logger.warning("[StealerWebUI] 未找到原版 astrbot_plugin_stealer 实例，将使用数据文件 fallback 模式执行可支持的读写操作")
+        self.loop=None; self.runner=None; self.site=None; self.thread=None; self._started=threading.Event(); self.batch_upload_tasks={}
 
     def _token(self): return hashlib.sha256(self.password.encode()).hexdigest() if self.password else ""
     def _auth(self, request): return (not self.password) or request.cookies.get("stealer_webui_token")==self._token()
@@ -649,9 +1106,6 @@ class WebUIRunner:
             return _json_response({"success":True,"emotions":self.bridge.category_info()})
         return _json_response({"success":True,"emotions":self.store.get_category_info()})
     async def handle_health(self, request): return _json_response({"success":True,"status":"ok","service":"emoji-manager-webui"})
-    def _write_operation_unavailable(self):
-        return _json_response({"success":False,"error":"写操作不可用"}, 501)
-
     async def handle_update(self, request):
         if (r:=self._need_auth(request)): return r
         data=await request.json()
@@ -667,14 +1121,15 @@ class WebUIRunner:
         if self.bridge:
             n=await self.bridge.delete_hashes({str(data.get("hash",""))}, bool(data.get("blacklist", False)))
         else:
-            n=self.store.delete_hashes({str(data.get("hash",""))})
+            n=self.store.delete_hashes({str(data.get("hash",""))}, bool(data.get("blacklist", False)))
         return _json_response({"success":n>0,"count":n,"error":"图片未找到" if n==0 else ""})
 
     async def handle_batch_delete(self, request):
         if (r:=self._need_auth(request)): return r
         data=await request.json()
         hashes=set(map(str,data.get("hashes",[])))
-        n=await self.bridge.delete_hashes(hashes) if self.bridge else self.store.delete_hashes(hashes)
+        blacklist=bool(data.get("blacklist", False))
+        n=await self.bridge.delete_hashes(hashes, blacklist) if self.bridge else self.store.delete_hashes(hashes, blacklist)
         return _json_response({"success":True,"count":n})
 
     async def handle_batch_move(self, request):
@@ -694,13 +1149,146 @@ class WebUIRunner:
         else:
             u,skipped=self.store.update_scope(hashes, _norm_scope(data.get("scope_mode")))
         return _json_response({"success":True,"count":u,"skipped":skipped})
-    async def handle_upload(self, request): return _json_response({"success":False,"error":"独立补丁暂不支持单图上传，请使用目标插件原生 WebUI 或批量导入待后续适配"})
-    async def handle_batch_upload(self, request): return _json_response({"success":False,"error":"独立补丁暂不支持批量上传"})
-    async def handle_batch_status(self, request): return _json_response({"success":False,"error":"任务不存在或独立补丁未启用上传"})
-    async def handle_analyze(self, request): return _json_response({"success":False,"error":"独立补丁无法调用目标插件 VLM 服务"})
+    async def _read_upload_request(self, request) -> tuple[list[dict], str, bool]:
+        files_data: list[dict] = []
+        category = ""
+        auto_analyze = False
+
+        ctype = (request.headers.get("Content-Type") or "").lower()
+        if "application/json" in ctype:
+            data = await request.json()
+            category = str(data.get("category") or data.get("emotion") or "").strip()
+            auto_analyze = str(data.get("auto_analyze", data.get("autoAnalyze", "false"))).lower() == "true"
+            for fi in data.get("_files", []):
+                b64 = str(fi.get("base64", ""))
+                if "," in b64:
+                    b64 = b64.split(",", 1)[1]
+                content = base64.b64decode(b64)
+                ext = Path(fi.get("name", "upload.png")).suffix.lower() or ".png"
+                if ext in ALLOWED_EXTS and content:
+                    files_data.append({"filename": fi.get("name", "upload.png"), "content": content, "ext": ext, "hash": hashlib.sha256(content).hexdigest()})
+            return files_data, category, auto_analyze
+
+        reader = await request.multipart()
+        async for part in reader:
+            if part.name in {"category", "emotion"}:
+                category = (await part.text()).strip()
+                continue
+            if part.name in {"auto_analyze", "autoAnalyze"}:
+                auto_analyze = (await part.text()).strip().lower() == "true"
+                continue
+            if part.filename:
+                ext = Path(part.filename or "upload.png").suffix.lower() or ".png"
+                content = await part.read(decode=False)
+                if ext in ALLOWED_EXTS and content:
+                    files_data.append({"filename": part.filename or "upload.png", "content": content, "ext": ext, "hash": hashlib.sha256(content).hexdigest()})
+        return files_data, category, auto_analyze
+
+    async def handle_upload(self, request):
+        if (r:=self._need_auth(request)): return r
+        try:
+            files_data, category, _ = await self._read_upload_request(request)
+            if not files_data:
+                return _json_response({"success": False, "error": "没有上传有效的图片文件"})
+            fd = files_data[0]
+            if self.bridge:
+                img = await self.bridge.persist_upload(fd["content"], fd["ext"], category, file_hash=fd["hash"])
+            else:
+                img = self.store.persist_upload(fd["content"], fd["ext"], category, file_hash=fd["hash"])
+            return _json_response({"success": True, "image": img, "hash": img["hash"], "category": img.get("category"), "duplicate": bool(img.get("duplicate"))})
+        except Exception as e:
+            logger.error(f"[StealerWebUI] 上传图片失败: {e}", exc_info=True)
+            return _json_response({"success": False, "error": str(e)})
+
+    async def handle_batch_upload(self, request):
+        if (r:=self._need_auth(request)): return r
+        try:
+            files_data, category, auto_analyze = await self._read_upload_request(request)
+            if not files_data:
+                return _json_response({"success": False, "error": "没有上传有效的图片文件"})
+            fallback = category or ((self.bridge.category_keys()[0] if self.bridge and self.bridge.category_keys() else None) or (self.store.get_category_keys()[0] if self.store.get_category_keys() else "unknown"))
+            task_id = str(uuid.uuid4())
+            self.batch_upload_tasks[task_id] = {"status": "processing", "total": len(files_data), "processed": 0, "success": 0, "failed": 0, "results": []}
+            asyncio.create_task(self._process_batch_upload(task_id, files_data, category, auto_analyze, fallback))
+            return _json_response({"success": True, "task_id": task_id, "total": len(files_data)})
+        except Exception as e:
+            logger.error(f"[StealerWebUI] 批量上传失败: {e}", exc_info=True)
+            return _json_response({"success": False, "error": str(e)})
+
+    async def _process_batch_upload(self, task_id: str, files_data: list[dict], category: str, auto_analyze: bool, fallback: str):
+        task = self.batch_upload_tasks.get(task_id)
+        if not task:
+            return
+        try:
+            for fd in files_data:
+                try:
+                    final_cat = category or fallback
+                    tags: list[str] = []
+                    desc = ""
+                    scenes: list[str] = []
+
+                    if auto_analyze and self.bridge:
+                        b64 = "data:" + _mime(Path("x" + fd["ext"])) + ";base64," + base64.b64encode(fd["content"]).decode()
+                        analyzed = await self.bridge.analyze_image(img_base64=b64)
+                        if analyzed.get("success"):
+                            final_cat = str(analyzed.get("category") or final_cat)
+                            tags = _split_csv(analyzed.get("tags", []))
+                            desc = str(analyzed.get("description") or analyzed.get("desc") or "")
+                            scenes = _split_csv(analyzed.get("scenes", []))
+
+                    if self.bridge:
+                        img = await self.bridge.persist_upload(fd["content"], fd["ext"], final_cat, tags=tags, desc=desc, scenes=scenes, file_hash=fd["hash"])
+                    else:
+                        img = self.store.persist_upload(fd["content"], fd["ext"], final_cat, tags=tags, desc=desc, scenes=scenes, file_hash=fd["hash"])
+                    task["results"].append({"hash": img["hash"], "category": img.get("category"), "success": True, "duplicate": bool(img.get("duplicate"))})
+                    task["success"] += 1
+                except Exception as e:
+                    logger.error(f"[StealerWebUI] 处理上传文件 {fd.get('filename')} 失败: {e}")
+                    task["results"].append({"filename": fd.get("filename"), "success": False, "error": str(e)})
+                    task["failed"] += 1
+                task["processed"] += 1
+            task["status"] = "completed"
+        except Exception as e:
+            task["status"] = "failed"
+            task["error"] = str(e)
+
+    async def handle_batch_status(self, request):
+        if (r:=self._need_auth(request)): return r
+        task_id = request.query.get("task_id", "").strip()
+        task = self.batch_upload_tasks.get(task_id)
+        if not task:
+            return _json_response({"success": False, "error": "任务不存在或已过期"})
+        return _json_response({
+            "success": True,
+            "task_id": task_id,
+            "status": task.get("status"),
+            "total": task.get("total", 0),
+            "processed": task.get("processed", 0),
+            "success_count": task.get("success", 0),
+            "failed_count": task.get("failed", 0),
+            "error": task.get("error", ""),
+            "results": task.get("results", []),
+        })
+
+    async def handle_analyze(self, request):
+        if (r:=self._need_auth(request)): return r
+        try:
+            data = await request.json()
+            img_hash = str(data.get("hash", "") or "").strip()
+            img_base64 = str(data.get("base64", "") or "").strip()
+            if not self.bridge:
+                return _json_response({"success": False, "error": "图片处理服务不可用"})
+            return _json_response(await self.bridge.analyze_image(img_hash=img_hash, img_base64=img_base64))
+        except Exception as e:
+            logger.error(f"[StealerWebUI] VLM分析失败: {e}", exc_info=True)
+            return _json_response({"success": False, "error": f"分析失败: {e}"})
     async def handle_delete_category(self, request):
         if (r:=self._need_auth(request)): return r
-        return self._write_operation_unavailable()
+        data = await request.json()
+        key = str(data.get("key", "")).strip()
+        if self.bridge:
+            return _json_response(await self.bridge.delete_category(key))
+        return _json_response(self.store.delete_category(key))
 
     def _is_addr_in_use(self, e: OSError) -> bool:
         return getattr(e, "errno", None) == 98 or "address already in use" in str(e).lower()
@@ -817,7 +1405,7 @@ class StealerWebUIStandalonePlugin(Star):
             obj = found[0]
             logger.info(f"[StealerWebUI] 找到原版 Stealer 插件实例: {obj.__class__.__module__}.{obj.__class__.__name__}")
             return obj
-        logger.warning("[StealerWebUI] 未找到原版 astrbot_plugin_stealer 实例，写操作将不可用")
+        logger.warning("[StealerWebUI] 未找到原版 astrbot_plugin_stealer 实例，将使用数据文件 fallback 模式")
         return None
 
     def _resolve_stealer_data_dir(self):
