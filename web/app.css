@@ -1969,7 +1969,7 @@ select.codex-input {
 @media (max-width: 768px) {
     :root {
         --slot-size: var(--slot-size-mobile);
-        --slot-min: 146px;
+        --slot-min: 112px;
     }
     
     .codex-header {
@@ -2103,7 +2103,7 @@ select.codex-input {
 @media (max-width: 380px) {
     :root {
         --slot-size: var(--slot-size-small);
-        --slot-min: 146px;
+        --slot-min: 112px;
     }
     
     .inventory-grid {
