@@ -28,6 +28,8 @@
     --slot-size-tablet: 140px;
     --slot-size-mobile: 110px;
     --slot-size-small: 90px;
+    /* Adaptive minimum card width; grid decides columns automatically. */
+    --slot-min: clamp(140px, 12vw, 180px);
 }
 
 /* Light Theme - Soft Cream & Deep Brown */
@@ -513,7 +515,7 @@ h2 {
     flex: 1;
     padding: 24px;
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(var(--slot-size), 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--slot-min)), 1fr));
     gap: 18px;
     overflow-y: auto;
     align-content: start;
@@ -1876,10 +1878,11 @@ select.codex-input {
 @media (max-width: 1200px) {
     :root {
         --slot-size: var(--slot-size-tablet);
+        --slot-min: clamp(132px, 16vw, 170px);
     }
     
     .inventory-grid {
-        grid-template-columns: repeat(auto-fill, minmax(var(--slot-size-tablet), 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--slot-min)), 1fr));
     }
 }
 
@@ -1894,45 +1897,40 @@ select.codex-input {
     .sidebar {
         width: 100%;
         flex: 0 0 auto;
-        flex-direction: column;
-        overflow: hidden;
+        flex-direction: row;
+        overflow-x: auto;
+        overflow-y: hidden;
         padding: 12px;
-        max-height: clamp(180px, 32vh, 280px);
+        max-height: none;
         gap: 8px;
+        -webkit-overflow-scrolling: touch;
     }
     
     .sidebar-title {
-        display: flex;
-        flex: 0 0 auto;
-        margin-bottom: 2px;
-        padding-bottom: 8px;
+        display: none;
     }
     
     .category-list {
-        flex-direction: column;
+        flex-direction: row;
         flex-wrap: nowrap;
-        gap: 6px;
-        width: 100%;
-        min-width: 0;
-        min-height: 0;
-        max-height: clamp(128px, 24vh, 220px);
-        overflow-x: hidden;
-        overflow-y: auto;
-        padding-right: 4px;
+        gap: 8px;
+        width: max-content;
+        min-width: 100%;
+        overflow: visible;
     }
     
     .category-item {
         flex: 0 0 auto;
-        width: 100%;
-        min-width: 0;
-        max-width: 100%;
+        width: auto;
+        min-width: max-content;
+        max-width: none;
         white-space: nowrap;
     }
 
     .category-name {
         min-width: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
+        overflow: visible;
+        text-overflow: clip;
         white-space: nowrap;
     }
 
@@ -1970,6 +1968,7 @@ select.codex-input {
 @media (max-width: 768px) {
     :root {
         --slot-size: var(--slot-size-mobile);
+        --slot-min: clamp(118px, 32vw, 160px);
     }
     
     .codex-header {
@@ -2023,8 +2022,8 @@ select.codex-input {
     }
     
     .inventory-grid {
-        grid-template-columns: repeat(auto-fill, minmax(var(--slot-size-mobile), 1fr));
-        gap: 8px;
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--slot-min)), 1fr));
+        gap: 10px;
         padding: 12px;
     }
     
@@ -2103,10 +2102,11 @@ select.codex-input {
 @media (max-width: 380px) {
     :root {
         --slot-size: var(--slot-size-small);
+        --slot-min: clamp(112px, 44vw, 150px);
     }
     
     .inventory-grid {
-        grid-template-columns: repeat(auto-fill, minmax(var(--slot-size-small), 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--slot-min)), 1fr));
         gap: 6px;
     }
     
@@ -2140,10 +2140,10 @@ select.codex-input {
     }
 }
 
-/* Mobile grid keeps auto-fit behavior; avoid forcing a fixed 4-column layout. */
+/* Mobile grid adaptive tuning: keep natural flow instead of controlling column count. */
 @media (max-width: 768px), (max-device-width: 768px) {
     .inventory-grid {
-        grid-template-columns: repeat(auto-fill, minmax(var(--slot-size-mobile), 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--slot-min)), 1fr));
         gap: 10px;
         padding: 10px;
         justify-content: stretch;
