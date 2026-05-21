@@ -1319,6 +1319,8 @@ class WebUIRunner:
             if self.release_occupied_port:
                 logger.warning(f"[StealerWebUI] 目标端口 {self.port} 被占用，尝试释放后继续绑定同一端口")
                 await self._release_port()
+                # 重新创建Site，因为原来的Site不能重复启动
+                self.site=web.TCPSite(self.runner,self.host,self.port)
                 try:
                     await self.site.start()
                 except OSError as e2:
