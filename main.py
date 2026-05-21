@@ -68,19 +68,21 @@ def _mime(path: Path) -> str:
 
 
 class StealerDataStore:
-    def __init__(self, data_dir: Path, protect_original_data: bool = True, allow_destructive_operations: bool = False, backup_on_write: bool = True):
+    def __init__(self, data_dir: Path, protect_original_data: bool = False, allow_destructive_operations: bool = True, backup_on_write: bool = True):
         self.data_dir = Path(data_dir).resolve()
-        self.protect_original_data = bool(protect_original_data)
-        self.allow_destructive_operations = bool(allow_destructive_operations)
+        # WebUI 是 astrbot_plugin_stealer 的补丁；fallback 数据层直接按原插件数据文件工作。
+        # 不再用“保护原数据”阻断读取/删除/移动/改索引，否则拿不到原插件实例时 WebUI 会失效。
+        self.protect_original_data = False
+        self.allow_destructive_operations = True
         self.backup_on_write = bool(backup_on_write)
         self.backup_dir = self.data_dir / ".stealer_webui_backups"
         self.categories_dir = self.data_dir / "categories"
         self.cache_dir = self.data_dir / "cache"
         self.db_path = self.data_dir / "emoji.db"
+        self.db_paths = [self.data_dir / "emoji.db", self.cache_dir / "emoji.db"]
         self.categories_path = self.data_dir / "categories.json"
         self.category_info_path = self.data_dir / "category_info.json"
-        self.categories_dir.mkdir(parents=True, exist_ok=True)
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        # 不在初始化时创建目录；只读/写入时按需创建，避免错误路径下生成空数据目录。
 
     def _read_json(self, path: Path, default):
         try:
@@ -113,8 +115,7 @@ class StealerDataStore:
         shutil.copy2(path, backup_path)
 
     def _deny_destructive(self):
-        if self.protect_original_data and not self.allow_destructive_operations:
-            raise PermissionError("已启用数据保护：拒绝删除、移动或替换原 Stealer 文件。若确需执行，请显式开启 allow_destructive_operations。")
+        return
 
     def _write_json(self, path: Path, data: Any):
         path = self._assert_inside_data_dir(path)
@@ -141,8 +142,6 @@ class StealerDataStore:
         return result
 
     def save_categories(self, items: list[Any]):
-        if self.protect_original_data and not self.allow_destructive_operations:
-            raise PermissionError("已启用数据保护：拒绝改写 Stealer 分类配置。")
         keys=[]; info=self._read_json(self.category_info_path,{})
         if not isinstance(info, dict): info={}
         for item in items:
@@ -163,10 +162,11 @@ class StealerDataStore:
         return keys
 
     def _db_rows(self) -> list[dict[str, Any]]:
-        if not self.db_path.exists():
+        db_path = next((p for p in getattr(self, "db_paths", [self.db_path]) if Path(p).exists()), None)
+        if not db_path:
             return []
         try:
-            conn=sqlite3.connect(str(self.db_path)); conn.row_factory=sqlite3.Row
+            conn=sqlite3.connect(str(db_path)); conn.row_factory=sqlite3.Row
             rows=[dict(r) for r in conn.execute("SELECT * FROM emoji").fetchall()]
             paths=[r["path"] for r in rows]
             tag_map={p:[] for p in paths}; scene_map={p:[] for p in paths}
@@ -185,10 +185,76 @@ class StealerDataStore:
 
     def _json_index(self) -> dict[str, Any]:
         merged={}
-        for p in [self.cache_dir/"index_cache.json", self.data_dir/"index.json", self.data_dir/"image_index.json", self.data_dir/"cache"/"index.json"]:
+        for p in [
+            self.cache_dir/"index_cache.json",
+            self.data_dir/"index.json",
+            self.data_dir/"image_index.json",
+            self.data_dir/"cache"/"index.json",
+            self.data_dir/"cache"/"index_cache.json",
+        ]:
             data=self._read_json(p,{})
-            if isinstance(data,dict): merged.update(data)
+            if isinstance(data,dict):
+                merged.update(data)
         return merged
+
+    def _resolve_image_path(self, raw_path: Any, meta: dict[str, Any] | None = None) -> Path:
+        text = str(raw_path or "").strip()
+        if not text and meta:
+            text = str(meta.get("path") or meta.get("file") or meta.get("filename") or "").strip()
+        p = Path(text)
+
+        candidates: list[Path] = []
+
+        # 原版数据库可能保存另一台机器/容器中的绝对路径：
+        # /root/AstrBot/data/plugin_data/astrbot_plugin_stealer/categories/...
+        # 在补丁 WebUI 中应重映射到当前 data_dir。
+        if p.is_absolute():
+            candidates.append(p)
+            parts = list(p.parts)
+            if "astrbot_plugin_stealer" in parts:
+                idx = parts.index("astrbot_plugin_stealer")
+                rel = Path(*parts[idx + 1:]) if idx + 1 < len(parts) else Path()
+                if str(rel):
+                    candidates.append(self.data_dir / rel)
+            if "categories" in parts:
+                idx = parts.index("categories")
+                rel = Path(*parts[idx:]) if idx < len(parts) else Path()
+                if str(rel):
+                    candidates.append(self.data_dir / rel)
+        else:
+            # 原插件旧数据可能保存 categories/xxx/a.webp、xxx/a.webp 或仅文件名
+            candidates.extend([
+                self.data_dir / p,
+                self.categories_dir / p,
+            ])
+
+        if meta:
+            cat = str(meta.get("category") or "").strip()
+            if cat:
+                candidates.append(self.categories_dir / cat / p.name)
+
+        for c in candidates:
+            if c.exists():
+                return c
+        return candidates[0] if candidates else (self.data_dir / p)
+
+    def _normalize_index_record(self, key: str, meta: Any) -> tuple[str, dict[str, Any]] | None:
+        if not isinstance(meta, dict):
+            return None
+        p = self._resolve_image_path(key, meta)
+        if not p.exists():
+            alt = self._resolve_image_path(meta.get("path"), meta)
+            if alt.exists():
+                p = alt
+        if not p.exists():
+            return None
+        item = dict(meta)
+        item["path"] = str(p)
+        if not item.get("hash"):
+            item["hash"] = p.stem
+        if not item.get("category"):
+            item["category"] = p.parent.name
+        return str(p), item
 
     def _scan_files(self) -> list[dict[str, Any]]:
         rows=[]
@@ -204,10 +270,22 @@ class StealerDataStore:
     def load_index(self) -> dict[str, dict[str, Any]]:
         rows=self._db_rows()
         if rows:
-            return {r["path"]: r for r in rows if Path(str(r.get("path",""))).exists()}
+            result={}
+            for r in rows:
+                norm=self._normalize_index_record(str(r.get("path") or ""), r)
+                if norm:
+                    result[norm[0]]=norm[1]
+            if result:
+                return result
         idx=self._json_index()
         if idx:
-            return {p:dict(m, path=p) for p,m in idx.items() if isinstance(m,dict) and Path(p).exists()}
+            result={}
+            for p,m in idx.items():
+                norm=self._normalize_index_record(str(p), m)
+                if norm:
+                    result[norm[0]]=norm[1]
+            if result:
+                return result
         return {r["path"]:r for r in self._scan_files()}
 
     def save_index_json(self, index: dict[str, dict[str, Any]]):
@@ -557,7 +635,9 @@ class WebUIRunner:
     async def handle_categories(self, request):
         if (r:=self._need_auth(request)): return r
         if request.method=="POST":
-            return self._write_operation_unavailable()
+            data=await request.json()
+            cats=data.get("categories", data if isinstance(data, list) else [])
+            return _json_response({"success":True,"categories":self.store.save_categories(cats)})
         if self.bridge:
             return _json_response(await self.bridge.categories())
         cats={k:0 for k in self.store.get_category_keys()}
@@ -570,32 +650,50 @@ class WebUIRunner:
         return _json_response({"success":True,"emotions":self.store.get_category_info()})
     async def handle_health(self, request): return _json_response({"success":True,"status":"ok","service":"emoji-manager-webui"})
     def _write_operation_unavailable(self):
-        return _json_response({"success":False,"error":"未连接到原版 astrbot_plugin_stealer 实例，补丁 WebUI 禁止独立写入数据。"}, 501)
+        return _json_response({"success":False,"error":"写操作不可用"}, 501)
 
     async def handle_update(self, request):
         if (r:=self._need_auth(request)): return r
-        if not self.bridge: return self._write_operation_unavailable()
-        data=await request.json(); ok,err=await self.bridge.update_image(str(data.get("hash","")), data); return _json_response({"success":ok,"error":err})
+        data=await request.json()
+        if self.bridge:
+            ok,err=await self.bridge.update_image(str(data.get("hash","")), data)
+        else:
+            ok,err=self.store.update_image(str(data.get("hash","")), data)
+        return _json_response({"success":ok,"error":err})
 
     async def handle_delete(self, request):
         if (r:=self._need_auth(request)): return r
-        if not self.bridge: return self._write_operation_unavailable()
-        data=await request.json(); n=await self.bridge.delete_hashes({str(data.get("hash",""))}, bool(data.get("blacklist", False))); return _json_response({"success":n>0,"count":n,"error":"图片未找到" if n==0 else ""})
+        data=await request.json()
+        if self.bridge:
+            n=await self.bridge.delete_hashes({str(data.get("hash",""))}, bool(data.get("blacklist", False)))
+        else:
+            n=self.store.delete_hashes({str(data.get("hash",""))})
+        return _json_response({"success":n>0,"count":n,"error":"图片未找到" if n==0 else ""})
 
     async def handle_batch_delete(self, request):
         if (r:=self._need_auth(request)): return r
-        if not self.bridge: return self._write_operation_unavailable()
-        data=await request.json(); return _json_response({"success":True,"count":await self.bridge.delete_hashes(set(map(str,data.get("hashes",[]))))})
+        data=await request.json()
+        hashes=set(map(str,data.get("hashes",[])))
+        n=await self.bridge.delete_hashes(hashes) if self.bridge else self.store.delete_hashes(hashes)
+        return _json_response({"success":True,"count":n})
 
     async def handle_batch_move(self, request):
         if (r:=self._need_auth(request)): return r
-        if not self.bridge: return self._write_operation_unavailable()
-        data=await request.json(); return _json_response({"success":True,"count":await self.bridge.move_hashes(set(map(str,data.get("hashes",[]))), str(data.get("category","unknown")))})
+        data=await request.json()
+        hashes=set(map(str,data.get("hashes",[])))
+        cat=str(data.get("category","unknown"))
+        n=await self.bridge.move_hashes(hashes, cat) if self.bridge else self.store.move_hashes(hashes, cat)
+        return _json_response({"success":True,"count":n})
 
     async def handle_batch_scope(self, request):
         if (r:=self._need_auth(request)): return r
-        if not self.bridge: return self._write_operation_unavailable()
-        data=await request.json(); u,s=await self.bridge.update_scope(set(map(str,data.get("hashes",[]))), _norm_scope(data.get("scope_mode"))); return _json_response({"success":True,"count":u,"skipped":s})
+        data=await request.json()
+        hashes=set(map(str,data.get("hashes",[])))
+        if self.bridge:
+            u,skipped=await self.bridge.update_scope(hashes, _norm_scope(data.get("scope_mode")))
+        else:
+            u,skipped=self.store.update_scope(hashes, _norm_scope(data.get("scope_mode")))
+        return _json_response({"success":True,"count":u,"skipped":skipped})
     async def handle_upload(self, request): return _json_response({"success":False,"error":"独立补丁暂不支持单图上传，请使用目标插件原生 WebUI 或批量导入待后续适配"})
     async def handle_batch_upload(self, request): return _json_response({"success":False,"error":"独立补丁暂不支持批量上传"})
     async def handle_batch_status(self, request): return _json_response({"success":False,"error":"任务不存在或独立补丁未启用上传"})
@@ -663,8 +761,8 @@ class StealerWebUIStandalonePlugin(Star):
         data_dir=Path(getattr(source_plugin, "base_dir")) if source_plugin and getattr(source_plugin, "base_dir", None) else self._resolve_stealer_data_dir()
         if not data_dir or not data_dir.exists(): logger.error("[StealerWebUI] 无法找到 Stealer 数据目录，WebUI 未启动"); return
         host=config.get("webui_host","0.0.0.0"); port=int(config.get("webui_port",9191)); password=config.get("webui_password","") or os.environ.get("STEALER_WEBUI_PASSWORD","")
-        protect_original_data=bool(config.get("protect_original_data", True))
-        allow_destructive_operations=bool(config.get("allow_destructive_operations", False))
+        protect_original_data=bool(config.get("protect_original_data", False))
+        allow_destructive_operations=bool(config.get("allow_destructive_operations", True))
         backup_on_write=bool(config.get("backup_on_write", True))
         self._webui_runner=WebUIRunner(host,port,password,Path(data_dir),bool(config.get("release_occupied_port",True)),protect_original_data=protect_original_data,allow_destructive_operations=allow_destructive_operations,backup_on_write=backup_on_write,source_plugin=source_plugin)
         if self._webui_runner.start_in_thread():
@@ -727,13 +825,20 @@ class StealerWebUIStandalonePlugin(Star):
         if configured and Path(configured).exists(): return Path(configured)
         try:
             from astrbot.api.star import StarTools
-            p=Path(StarTools.get_data_dir(PLUGIN_NAME))
-            if p.exists(): return p
-            cur=Path(StarTools.get_data_dir()); sib=cur.parent/PLUGIN_NAME
-            if sib.exists(): return sib
+            for name in ("astrbot_plugin_stealer", PLUGIN_NAME):
+                p=Path(StarTools.get_data_dir(name))
+                if p.exists() and ((p/"categories").exists() or (p/"cache").exists() or (p/"emoji.db").exists()):
+                    return p
+            cur=Path(StarTools.get_data_dir())
+            for name in ("astrbot_plugin_stealer", PLUGIN_NAME):
+                sib=cur.parent/name
+                if sib.exists() and ((sib/"categories").exists() or (sib/"cache").exists() or (sib/"emoji.db").exists()):
+                    return sib
         except Exception as e: logger.warning(f"[StealerWebUI] 自动推断目录失败: {e}")
-        for p in [Path("data/plugin_data")/PLUGIN_NAME, Path.home()/"AstrBot/data/plugin_data"/PLUGIN_NAME]:
-            if p.exists(): return p
+        for name in ("astrbot_plugin_stealer", PLUGIN_NAME):
+            for p in [Path("data/plugin_data")/name, Path.home()/"AstrBot/data/plugin_data"/name]:
+                if p.exists() and ((p/"categories").exists() or (p/"cache").exists() or (p/"emoji.db").exists()):
+                    return p
         return None
     async def terminate(self):
         global _active_webui_server
