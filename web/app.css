@@ -29,7 +29,7 @@
     --slot-size-mobile: 110px;
     --slot-size-small: 90px;
     /* Adaptive minimum card width; grid decides columns automatically. */
-    --slot-min: clamp(128px, 11vw, 168px);
+    --slot-min: clamp(109px, 9.35vw, 143px);
 }
 
 /* Light Theme - Soft Cream & Deep Brown */
@@ -515,10 +515,11 @@ h2 {
     flex: 1;
     padding: 24px;
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--slot-min)), 1fr));
+    grid-template-columns: repeat(auto-fill, var(--slot-min));
     gap: 18px;
     overflow-y: auto;
     align-content: start;
+    justify-content: start;
 }
 
 /* Item Slot */
@@ -1878,11 +1879,11 @@ select.codex-input {
 @media (max-width: 1200px) {
     :root {
         --slot-size: var(--slot-size-tablet);
-        --slot-min: clamp(120px, 15vw, 158px);
+        --slot-min: clamp(102px, 12.75vw, 134px);
     }
     
     .inventory-grid {
-        grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--slot-min)), 1fr));
+        grid-template-columns: repeat(auto-fill, var(--slot-min));
     }
 }
 
@@ -1968,7 +1969,7 @@ select.codex-input {
 @media (max-width: 768px) {
     :root {
         --slot-size: var(--slot-size-mobile);
-        --slot-min: clamp(86px, 22vw, 132px);
+        --slot-min: clamp(73px, 18.7vw, 112px);
     }
     
     .codex-header {
@@ -2022,7 +2023,7 @@ select.codex-input {
     }
     
     .inventory-grid {
-        grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--slot-min)), 1fr));
+        grid-template-columns: repeat(auto-fill, var(--slot-min));
         gap: 8px;
         padding: 10px;
     }
@@ -2102,11 +2103,11 @@ select.codex-input {
 @media (max-width: 380px) {
     :root {
         --slot-size: var(--slot-size-small);
-        --slot-min: clamp(82px, 40vw, 120px);
+        --slot-min: clamp(70px, 34vw, 102px);
     }
     
     .inventory-grid {
-        grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--slot-min)), 1fr));
+        grid-template-columns: repeat(auto-fill, var(--slot-min));
         gap: 6px;
     }
     
@@ -2143,10 +2144,10 @@ select.codex-input {
 /* Mobile grid adaptive tuning: keep natural flow instead of controlling column count. */
 @media (max-width: 768px), (max-device-width: 768px) {
     .inventory-grid {
-        grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--slot-min)), 1fr));
+        grid-template-columns: repeat(auto-fill, var(--slot-min));
         gap: 8px;
         padding: 8px;
-        justify-content: stretch;
+        justify-content: start;
     }
 
     .item-slot {
