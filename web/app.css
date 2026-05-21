@@ -3159,3 +3159,55 @@ select.codex-input {
         padding: 10px !important;
     }
 }
+
+/* ========== Mobile modal true viewport centering override ==========
+   Fix modal sticking to the top by forcing overlay to occupy the full viewport. */
+@media (max-width: 768px), (max-device-width: 768px) {
+    .modal-overlay {
+        position: fixed !important;
+        inset: 0 !important;
+        width: 100vw !important;
+        height: 100vh !important;
+        min-height: 100vh !important;
+        height: 100dvh !important;
+        min-height: 100dvh !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        padding: 10px !important;
+        overflow-x: hidden !important;
+        overflow-y: auto !important;
+        box-sizing: border-box !important;
+    }
+
+    .modal-panel {
+        position: relative !important;
+        margin: auto !important;
+        max-height: calc(90vh - 20px) !important;
+        max-height: calc(90dvh - 20px) !important;
+        max-width: calc(100vw - 20px) !important;
+        flex: 0 1 auto !important;
+    }
+
+    .modal-overlay:has(.item-detail-modal) {
+        position: fixed !important;
+        inset: 0 !important;
+        width: 100vw !important;
+        height: 100vh !important;
+        min-height: 100vh !important;
+        height: 100dvh !important;
+        min-height: 100dvh !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        padding: 10px !important;
+        overflow-y: auto !important;
+        box-sizing: border-box !important;
+    }
+
+    .item-detail-modal {
+        margin: auto !important;
+        max-height: calc(90vh - 20px) !important;
+        max-height: calc(90dvh - 20px) !important;
+    }
+}
