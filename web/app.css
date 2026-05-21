@@ -29,7 +29,7 @@
     --slot-size-mobile: 110px;
     --slot-size-small: 90px;
     /* Adaptive minimum card width; grid decides columns automatically. */
-    --slot-min: clamp(140px, 12vw, 180px);
+    --slot-min: clamp(128px, 11vw, 168px);
 }
 
 /* Light Theme - Soft Cream & Deep Brown */
@@ -1878,7 +1878,7 @@ select.codex-input {
 @media (max-width: 1200px) {
     :root {
         --slot-size: var(--slot-size-tablet);
-        --slot-min: clamp(132px, 16vw, 170px);
+        --slot-min: clamp(120px, 15vw, 158px);
     }
     
     .inventory-grid {
@@ -1968,7 +1968,7 @@ select.codex-input {
 @media (max-width: 768px) {
     :root {
         --slot-size: var(--slot-size-mobile);
-        --slot-min: clamp(118px, 32vw, 160px);
+        --slot-min: clamp(104px, 28vw, 148px);
     }
     
     .codex-header {
@@ -2102,7 +2102,7 @@ select.codex-input {
 @media (max-width: 380px) {
     :root {
         --slot-size: var(--slot-size-small);
-        --slot-min: clamp(112px, 44vw, 150px);
+        --slot-min: clamp(98px, 42vw, 138px);
     }
     
     .inventory-grid {
