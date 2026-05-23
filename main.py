@@ -1293,17 +1293,18 @@ class WebUIRunner:
     def _is_addr_in_use(self, e: OSError) -> bool:
         return getattr(e, "errno", None) == 98 or "address already in use" in str(e).lower()
 
-    def _find_available_port(self, start: int, end: int) -> int | None:
-        """从 [start, end) 范围找一个可用端口，返回 None 表示全部占用"""
-        import socket
-        for p in range(start, end):
+    def _wait_port_free(self, timeout: float = 5.0) -> bool:
+        """等待端口释放，返回是否可用"""
+        import socket, time
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 try:
-                    s.bind((self.host, p))
-                    return p
+                    s.bind((self.host, self.port))
+                    return True
                 except OSError:
-                    continue
-        return None
+                    time.sleep(0.5)
+        return False
 
     async def _start_server(self):
         self.runner=web.AppRunner(self._create_app()); await self.runner.setup()
@@ -1313,17 +1314,14 @@ class WebUIRunner:
         except OSError as e:
             if not self._is_addr_in_use(e):
                 raise
-            if self.release_occupied_port:
-                # 不杀进程，自动找可用端口
-                new_port = self._find_available_port(self.port + 1, self.port + 100)
-                if new_port is None:
-                    raise OSError(f"端口 {self.port} 被占用，且 {self.port+1}-{self.port+99} 范围内无可用端口。请在配置中修改 webui_port。") from e
-                logger.warning(f"[StealerWebUI] 端口 {self.port} 被占用，自动切换到 {new_port}")
-                self.port = new_port
+            # 端口被占用，等待旧实例释放（AstrBot重启场景）
+            logger.warning(f"[StealerWebUI] 端口 {self.port} 被占用，等待旧实例释放...")
+            if self._wait_port_free(timeout=6.0):
+                # 重新创建Site并绑定
                 self.site=web.TCPSite(self.runner,self.host,self.port)
                 await self.site.start()
             else:
-                raise OSError(f"目标端口 {self.port} 已被占用。请关闭占用进程，或在配置中修改 webui_port。插件不会自动打开其他端口。") from e
+                raise OSError(f"端口 {self.port} 持续被占用，请检查是否有其他服务占用该端口。") from e
         logger.info(f"[StealerWebUI] WebUI 已启动: http://{self.host}:{self.port}"); self._started.set()
         while True: await asyncio.sleep(3600)
     async def _stop_server(self):
