@@ -1,3 +1,17 @@
+<div align="center">
+
+![:name](https://count.getloli.com/@astrbot_plugin_stealer_webui?name=astrbot_plugin_stealer_webui&theme=minecraft&padding=6&offset=0&align=top&scale=1&pixelated=1&darkmode=auto)
+
+# Stealer WebUI
+
+_✨ 独立表情管理 WebUI ✨_
+
+[![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
+[![AstrBot](https://img.shields.io/badge/AstrBot-3.4%2B-orange.svg)](https://github.com/Soulter/AstrBot)
+[![GitHub](https://img.shields.io/badge/作者-ERX399-blue)](https://github.com/ERX399)
+
+</div>
+
 # Stealer WebUI
 
 把 `astrbot_plugin_stealer` 当前表情管理 WebUI 从 AstrBot 面板中独立出来，改为外部端口访问
